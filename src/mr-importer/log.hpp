@@ -33,4 +33,27 @@ namespace mr::detail::term_modifier {
 #define MR_FATAL(...) \
   MR_LOG("FATAL", mr::detail::term_modifier::red, __VA_ARGS__)
 
+template <typename T>
+constexpr auto type_name() {
+  std::string_view name, prefix, suffix;
+
+#ifdef __clang__
+  name = __PRETTY_FUNCTION__;
+  prefix = "auto mr::type_name() [T = ";
+  suffix = "]";
+#elif defined(__GNUC__)
+  name = __PRETTY_FUNCTION__;
+  prefix = "constexpr auto mr::type_name() [with T = ";
+  suffix = "]";
+#elif defined(_MSC_VER)
+  name = __FUNCSIG__;
+  prefix = "auto __cdecl mr::type_name<";
+  suffix = ">(void)";
+#endif
+
+  name.remove_prefix(prefix.size());
+  name.remove_suffix(suffix.size());
+  return name;
+}
+
 #endif // __trace_hpp_

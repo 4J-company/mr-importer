@@ -31,8 +31,15 @@ namespace fg = fastgltf;
 #include <meshoptimizer.h>
 
 /*
+ * vtll related code
+ */
+
+#include "vtll.hpp"
+
+/*
  * mr related code
  */
+
 
 namespace mr::aligned {
 };
@@ -40,6 +47,9 @@ namespace mr::aligned {
 namespace mra = mr::aligned;
 
 namespace mr {
+  template<class... Ts>
+    struct Overloads : Ts... { using Ts::operator()...; };
+
   namespace aligned {
     using Vec2f = std::array<float, 2>;
     using Vec3f = std::array<float, 3>;
