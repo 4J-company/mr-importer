@@ -113,36 +113,64 @@ namespace mr {
   template <typename VariantT, typename ResultT>
   struct Pipe {
     std::unique_ptr<VariantT> object;
-    std::vector<Contract> contracts;
+    std::vector<Contract> contracts {};
+    std::atomic_flag completion_flag = false;
 
     Pipe() = default;
 
-    Pipe(std::unique_ptr<VariantT> &&initial, std::vector<Contract> &&cs)
-      : object(std::move(initial))
-      , contracts(std::move(cs))
+    Pipe(const Pipe&) = delete;
+    Pipe& operator=(const Pipe&) = delete;
+
+    Pipe(Pipe&& other) noexcept {
+      object = std::move(other.object);
+      contracts = std::move(other.contracts);
+      if (other.completion_flag.test()) {
+        completion_flag.test_and_set();
+      } else {
+        completion_flag.clear();
+      }
+    }
+    Pipe& operator=(Pipe&& other) noexcept {
+      object = std::move(other.object);
+      contracts = std::move(other.contracts);
+      if (other.completion_flag.test()) {
+        completion_flag.test_and_set();
+      } else {
+        completion_flag.clear();
+      }
+      return *this;
+    }
+
+    Pipe(VariantT &&initial)
+      : object(std::make_unique<VariantT>(std::move(initial)))
     {}
 
     void schedule() {
-      // contracts.front().schedule();
-      for (auto &c : contracts) {
-        c.schedule();
-        std::this_thread::sleep_for(1s);
-      }
+      contracts.front().schedule();
     }
 
     ResultT result() {
-      return std::visit(
-        [](auto &&obj) -> ResultT {
-          if constexpr (std::is_same_v<decltype(obj), ResultT>) {
-            return std::move(obj);
-          } else {
-            std::unreachable();
-            return ResultT{};
-          }
-        },
-        *object.get()
-      );
+      completion_flag.wait(false);
+      return std::get<ResultT>(*object.get());
     }
+
+    template<size_t StageIdx, size_t EndIdx, typename InputT, typename OutputT>
+      void create_contract(const std::function<OutputT(InputT)> &stage) {
+        auto contract = Executor::get().group.create_contract(
+          [this, stage]() {
+            auto result = stage(std::move(std::get<InputT>(*object.get())));
+            object->template emplace<OutputT>(std::move(result));
+
+            if constexpr (StageIdx + 1 < EndIdx) {
+              contracts[StageIdx + 1].schedule();
+            } else {
+              completion_flag.test_and_set(std::memory_order_release);
+              completion_flag.notify_one();
+            }
+          }
+        );
+        contracts.emplace_back(std::move(contract));
+      }
   };
 
   template <typename ...Is, typename ...Os>
@@ -169,35 +197,13 @@ namespace mr {
       PipePrototype() = default;
       PipePrototype(std::function<Os(Is)> ...cs) : callables(cs...) {}
 
-      PipeT on(InitialInputT &&initial) {
-        std::vector<Contract> contracts;
-        std::unique_ptr<VariantT> object = std::make_unique<VariantT>(initial);
-
-        auto append_contract = [&, obj_ptr = object.get()]<typename O, typename I>(std::function<O(I)> f) {
-          auto func =
-            [&]() {
-            *obj_ptr = std::visit(
-              Overloads{
-                // NOTE: returning std::optional might be overhead
-                //       since std::nullopt should never be returned
-                //       due to static_assert but it seems reasonable
-                //       and might protect against non-default-constructible types
-                [ ](auto &&) -> std::optional<O> { std::unreachable(); return {}; },
-                [f](I&& arg) -> std::optional<O> { return f(arg); }
-              }, *obj_ptr
-            ).value();
-          };
-          Contract contract = Executor::get().group.create_contract(std::move(func));
-          contracts.emplace_back(std::move(contract));
-        };
-
-        std::apply(
-          [&]<typename ...Fs>(Fs ... funcs) {
-            (append_contract(funcs), ...);
-          }, callables
-        );
-
-        return {std::move(object), std::move(contracts)};
+      constexpr PipeT on(InitialInputT &&initial) {
+        PipeT pipe{std::move(initial)};
+        constexpr size_t EndIdx = sizeof...(Os);
+        [this, &pipe]<size_t... Indices>(std::index_sequence<Indices...>) {
+          (pipe.template create_contract<Indices, EndIdx>(std::get<Indices>(callables)), ...);
+        }(std::make_index_sequence<EndIdx>{});
+        return pipe;
       }
     };
 
