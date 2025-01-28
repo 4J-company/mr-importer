@@ -8,6 +8,12 @@ namespace mr {
   };
   MR_DECLARE_HANDLE(Image);
 
+  template <typename ResultT, typename ...Args> auto make_pipe_prototype() {
+    return mr::PipePrototype {
+      std::function([](std::fs::path p) -> Image { return {p}; })
+    };
+  }
+
   struct TexCoord : ResourceBase<TexCoord> {
   };
   MR_DECLARE_HANDLE(TexCoord);

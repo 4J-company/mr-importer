@@ -1,4 +1,4 @@
-#include "pipeline.hpp"
+#include "pipe.hpp"
 
 mr::Executor::Executor() noexcept {
   for (int i = 0; i < threadcount; i++) {

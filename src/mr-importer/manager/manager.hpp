@@ -6,12 +6,13 @@
 #include <string>
 #include <optional>
 #include <unordered_map>
+#include <map>
 
 #include <efsw/efsw.hpp>
 
 #include "def.hpp"
 #include "resource.hpp"
-#include "pipeline/pipeline.hpp"
+#include "pipe/pipe.hpp"
 
 namespace mr {
 
@@ -30,35 +31,48 @@ namespace mr {
         operator bool() {
           return (bool)this->load();
         }
-        auto operator ->() {
+        auto operator->() {
           return this->load();
         }
       };
 
       struct Entry : AtomicWeakHandle<ResourceT> {
-        Pipeline<ResourceT> import_pipeline {
-          [this]() {
-            this->exchange(std::make_shared<ResourceT>(import_pipeline.asset()));
-          }
-        };
+        PipeHandle<ResourceT> pipe;
+
+        Entry(AtomicWeakHandle<ResourceT> &&other)
+          : AtomicWeakHandle<ResourceT>(std::move(other)) {}
 
         using AtomicWeakHandle<ResourceT>::AtomicWeakHandle;
         using AtomicWeakHandle<ResourceT>::operator=;
 
         template <typename ...Ts>
-          requires std::is_constructible_v<ResourceT, Ts...>
           HandleT init(Ts &&...args) {
-            // replace with import_pipeline.execute(...)
-            this->exchange(std::make_shared<ResourceT>(std::forward<Ts>(args)...));
+            if constexpr (sizeof...(Ts) > 1) {
+              pipe = make_pipe_prototype<ResourceT, Ts...>().on(
+                std::tuple<Ts...>(std::move(args)...),
+                [this]() {
+                  this->exchange(std::make_shared<ResourceT>(pipe->result()));
+                }
+              );
+            } else {
+              pipe = make_pipe_prototype<ResourceT, Ts...>().on(
+                std::move(args)...,
+                [this]() {
+                  this->exchange(std::make_shared<ResourceT>(pipe->result()));
+                }
+              );
+            }
+
+            pipe->execute();
             return this->load().lock();
           }
 
-          void update() {
-            import_pipeline.schedule();
-          }
+        void update() {
+          pipe->schedule();
+        }
       };
 
-      using ResourceMapT = std::unordered_map<std::string, Entry>;
+      using ResourceMapT = std::map<std::string, Entry>;
 
       class UpdateListener;
       friend class UpdateListener;

@@ -25,8 +25,8 @@ add_library(mr-importer-lib
   src/mr-importer/manager/manager.hpp
   src/mr-importer/manager/resource.hpp
 
-  src/mr-importer/pipeline/pipeline.cpp
-  src/mr-importer/pipeline/pipeline.hpp
+  src/mr-importer/pipe/pipe.cpp
+  src/mr-importer/pipe/pipe.hpp
 )
 target_compile_features(mr-importer-lib INTERFACE cxx_std_23)
 target_link_libraries(mr-importer-lib PUBLIC ${MR_IMPORTER_DEPS})
@@ -58,10 +58,8 @@ add_executable(
 )
 target_link_libraries(mr-importer-bench-exe PUBLIC mr-importer-lib)
 
-if (FALSE)
 add_executable(
   mr-importer-bench-final
   bench/final.cpp
 )
 target_link_libraries(mr-importer-bench-final PUBLIC mr-importer-lib)
-endif()
