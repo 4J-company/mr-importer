@@ -1,20 +1,11 @@
-#include "mr-importer/workers/composer.hpp"
-#include "mr-importer/manager/pipeline.hpp"
-#include "mr-importer/manager/resource.hpp"
+#include "mr-importer/def.hpp"
 #include "mr-importer/manager/manager.hpp"
 
-using namespace std::literals;
+#include "assets.hpp"
 
 int main() {
-  mr::ImportPipeline<int> pipeline {0};
-  pipeline
-    .add_node([](int *i) { *i = 1; })
-    .add_node([](int *i) { *i += 1; })
-    .add_node([](int *i) { *i += 1; })
-    .add_node([](int *i) { *i += 1; })
-    .add_node([](int *i) { *i *= 10; })
-    ;
-  pipeline.execute();
+  auto mgr = mr::ResourceManager<mr::Image>::get();
+  auto image = mgr.create(std::fs::current_path());
 
-  std::print("result: {}\n", *pipeline.object.get());
+  std::print("{}", image->value);
 }

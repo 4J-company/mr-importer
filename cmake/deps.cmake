@@ -6,9 +6,17 @@ file(
 )
 include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
 
+CPMAddPackage("gh:SpartanJ/efsw#master")
 CPMAddPackage("gh:spnda/fastgltf#main")
 CPMAddPackage("gh:zeux/meshoptimizer#master")
-CPMAddPackage("gh:buildingcpp/work_contract#main")
+CPMAddPackage(
+  NAME work_contract
+  GITHUB_REPOSITORY buildingcpp/work_contract
+  GIT_TAG main
+  OPTIONS
+    "WORK_CONTRACT_BUILD_BENCHMARK OFF"
+)
+# CPMAddPackage("gh:shader-slang/slang#master")
 
 if (NOT TARGET libstb-image)
   # download a single file from stb
@@ -24,4 +32,4 @@ endif()
 
 find_package(TBB REQUIRED tbb)
 
-set(MR_IMPORTER_DEPS fastgltf::fastgltf meshoptimizer tbb libstb-image work_contract)
+set(MR_IMPORTER_DEPS fastgltf::fastgltf meshoptimizer tbb libstb-image work_contract efsw)

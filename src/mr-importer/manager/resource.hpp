@@ -13,8 +13,12 @@ namespace mr {
   template <typename T>
   struct AtomicHandle : std::atomic<T> {
     AtomicHandle() = default;
-    AtomicHandle(const AtomicHandle &) = default;
-    AtomicHandle& operator=(const AtomicHandle &) = default;
+    AtomicHandle(const AtomicHandle &other) noexcept {
+      this->store(other.load());
+    }
+    AtomicHandle& operator=(const AtomicHandle &other) noexcept {
+      this->store(other.load());
+    }
     AtomicHandle(AtomicHandle &&other) noexcept {
       this->store(std::move(other.load()));
     }

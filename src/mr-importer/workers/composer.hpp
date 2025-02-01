@@ -4,8 +4,8 @@
 
 #include "def.hpp"
 
-#include "extractor.hpp"
-#include "optimizer.hpp"
+#include "extractor/extractor.hpp"
+#include "optimizer/optimizer.hpp"
 #include "parser.hpp"
 #include "uploader.hpp"
 
