@@ -1,11 +1,6 @@
 #pragma once
 
-#include <cstdint>
-#include <filesystem>
-#include <vector>
-
-#include <fastgltf/math.hpp>
-#include <glm/glm.hpp>
+#include "def.hpp"
 
 namespace mr {
 inline namespace importer {

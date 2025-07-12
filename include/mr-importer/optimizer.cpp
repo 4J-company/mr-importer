@@ -1,7 +1,6 @@
 #include "def.hpp"
-#include <print>
-#include "mr-importer/assets.hpp"
-#include <meshoptimizer.h>
+
+#include "assets.hpp"
 #include "optimizer.hpp"
 
 namespace mr {
@@ -13,7 +12,7 @@ inline namespace importer {
     size_t lod_count = 0;
 
     if (lod_scale > 1) {
-        std::println("LOD Scale greater than 1. Needs investigation");
+        fmt::println("LOD Scale greater than 1. Needs investigation");
         lod_scale = 0.1;
     }
 
@@ -65,10 +64,10 @@ inline namespace importer {
         options, &lod_error)
     );
 
-    std::println("LOD {}:", lod_index);
-    std::println("\tTarget index count: {}", target_index_count);
-    std::println("\tIs sparse: {}", is_sparse);
-    std::println("\tError: {}", lod_error);
+    fmt::println("LOD {}:", lod_index);
+    fmt::println("\tTarget index count: {}", target_index_count);
+    fmt::println("\tIs sparse: {}", is_sparse);
+    fmt::println("\tError: {}", lod_error);
 
     meshopt_optimizeVertexCache(result_indices.data(), result_indices.data(), result_indices.size(), positions.size());
 

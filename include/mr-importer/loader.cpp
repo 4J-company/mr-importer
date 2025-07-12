@@ -1,15 +1,7 @@
-#include <print>
-
-#include "mr-importer/def.hpp"
-#include <fastgltf/core.hpp>
-#include <fastgltf/tools.hpp>
-#include <fastgltf/types.hpp>
-#include <fastgltf/glm_element_traits.hpp>
-
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include "def.hpp"
 
 #include "loader.hpp"
+#include "assets.hpp"
 
 namespace mr {
 inline namespace importer {
@@ -22,21 +14,21 @@ inline namespace importer {
 
     auto attr = primitive.findAttribute(name);
     if (attr == primitive.attributes.cend()) {
-      std::println("primitive didn't contain {} attribute", name);
+      fmt::println("primitive didn't contain {} attribute", name);
       return std::nullopt;
     }
     size_t acessor_id = attr->accessorIndex;
     if (acessor_id >= asset.accessors.size()) {
-      std::println("primitive didn't contain {} accessor", name);
+      fmt::println("primitive didn't contain {} accessor", name);
       return std::nullopt;
     }
     const Accessor& accessor = asset.accessors[acessor_id];
     if (accessor.type != AccessorType::Vec3 || accessor.componentType != ComponentType::Float) {
-      std::println("primitive's itions were in wrong format (not Vec3f)");
+      fmt::println("primitive's itions were in wrong format (not Vec3f)");
       return std::nullopt;
     }
     if (!accessor.bufferViewIndex.has_value()) {
-      std::println("primitive didn't contain buffer view");
+      fmt::println("primitive didn't contain buffer view");
       return std::nullopt;
     }
 
@@ -90,8 +82,8 @@ inline namespace importer {
     auto options = Options::LoadExternalBuffers | Options::LoadExternalImages;
     auto [error, asset] = parser.loadGltf(data, path.parent_path(), options);
     if (error != Error::None) {
-      std::println("Failed to parse GLTF file");
-      std::println("Error code: {}", (int)error);
+      fmt::println("Failed to parse GLTF file");
+      fmt::println("Error code: {}", (int)error);
       return {};
     }
 
@@ -99,22 +91,22 @@ inline namespace importer {
     transforms.resize(asset.meshes.size());
     fastgltf::iterateSceneNodes(asset, 0, fastgltf::math::fmat4x4(),
       [&](fastgltf::Node& node, fastgltf::math::fmat4x4 matrix) {
-        if (node.meshIndex.has_value()) {
-          transforms[*node.meshIndex].push_back(glm::make_mat4(matrix.data()));
+          if (node.meshIndex.has_value()) {
+            transforms[*node.meshIndex].push_back(glm::make_mat4(matrix.data()));
+          }
         }
-      }
-    );
+      );
 
     for (int i = 0; i < asset.meshes.size(); i++) {
       const fastgltf::Mesh& gltfMesh = asset.meshes[i];
-	  for (int j = 0; j < gltfMesh.primitives.size(); j++) {
-		  const auto& primitive = gltfMesh.primitives[j];
-		  auto mesh_opt = getMeshFromPrimitive(asset, primitive);
-		  if (mesh_opt.has_value()) {
-			  mesh_opt->transforms = transforms[i];
-			  mesh_opt->name = gltfMesh.name;
-			  result.emplace_back(std::move(mesh_opt.value()));
-		  }
+      for (int j = 0; j < gltfMesh.primitives.size(); j++) {
+        const auto& primitive = gltfMesh.primitives[j];
+        std::optional<Mesh> mesh_opt = getMeshFromPrimitive(asset, primitive);
+        if (mesh_opt.has_value()) {
+          mesh_opt->transforms = transforms[i];
+          mesh_opt->name = gltfMesh.name;
+          result.emplace_back(std::move(mesh_opt.value()));
+        }
       }
     }
 
@@ -174,58 +166,58 @@ inline namespace importer {
     return newImage;
 
     /*
-    std::visit(
-      fastgltf::visitor {
-        [](auto& arg) {},
-        [&](fastgltf::sources::URI& filePath) {
-          assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-          assert(filePath.uri.isLocalPath()); // We're only capable of loading
-          // local files.
+      std::visit(
+        fastgltf::visitor {
+          [](auto& arg) {},
+          [&](fastgltf::sources::URI& filePath) {
+            assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
+            assert(filePath.uri.isLocalPath()); // We're only capable of loading
+            // local files.
 
-          const std::string path(filePath.uri.path().begin(),
-                                 filePath.uri.path().end()); // Thanks C++.
-          unsigned char* dataptr = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
-          if (dataptr) {
-            VkExtent3D imagesize;
-            imagesize.width = width;
-            imagesize.height = height;
-            imagesize.depth = 1;
-          }
-        },
-        [&](fastgltf::sources::Vector& vector) {
-          unsigned char* data = stbi_load_from_memory(vector.bytes.data(), static_cast<int>(vector.bytes.size()),
-                                                      &width, &height, &nrChannels, 4);
-          if (data) {
-            VkExtent3D imagesize;
-            imagesize.width = width;
-            imagesize.height = height;
-            imagesize.depth = 1;
-          }
-        },
-        [&](fastgltf::sources::BufferView& view) {
-          auto& bufferView = asset.bufferViews[view.bufferViewIndex];
-          auto& buffer = asset.buffers[bufferView.bufferIndex];
+            const std::string path(filePath.uri.path().begin(),
+                                   filePath.uri.path().end()); // Thanks C++.
+            unsigned char* dataptr = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
+            if (dataptr) {
+              VkExtent3D imagesize;
+              imagesize.width = width;
+              imagesize.height = height;
+              imagesize.depth = 1;
+            }
+          },
+          [&](fastgltf::sources::Vector& vector) {
+            unsigned char* data = stbi_load_from_memory(vector.bytes.data(), static_cast<int>(vector.bytes.size()),
+                                                        &width, &height, &nrChannels, 4);
+            if (data) {
+              VkExtent3D imagesize;
+              imagesize.width = width;
+              imagesize.height = height;
+              imagesize.depth = 1;
+            }
+          },
+          [&](fastgltf::sources::BufferView& view) {
+            auto& bufferView = asset.bufferViews[view.bufferViewIndex];
+            auto& buffer = asset.buffers[bufferView.bufferIndex];
 
-          std::visit(fastgltf::visitor { // We only care about VectorWithMime here, because we
-            // specify LoadExternalBuffers, meaning all buffers
-            // are already loaded into a vector.
-            [](auto& arg) {},
-            [&](fastgltf::sources::Vector& vector) {
-              unsigned char* data = stbi_load_from_memory(vector.bytes.data() + bufferView.byteOffset,
-                                                          static_cast<int>(bufferView.byteLength),
-                                                          &width, &height, &nrChannels, 4);
-              if (data) {
-                VkExtent3D imagesize;
-                imagesize.width = width;
-                imagesize.height = height;
-                imagesize.depth = 1;
-              }
-            } },
-                     buffer.data);
+            std::visit(fastgltf::visitor { // We only care about VectorWithMime here, because we
+              // specify LoadExternalBuffers, meaning all buffers
+              // are already loaded into a vector.
+              [](auto& arg) {},
+              [&](fastgltf::sources::Vector& vector) {
+                unsigned char* data = stbi_load_from_memory(vector.bytes.data() + bufferView.byteOffset,
+                                                            static_cast<int>(bufferView.byteLength),
+                                                            &width, &height, &nrChannels, 4);
+                if (data) {
+                  VkExtent3D imagesize;
+                  imagesize.width = width;
+                  imagesize.height = height;
+                  imagesize.depth = 1;
+                }
+              } },
+                       buffer.data);
+          },
         },
-      },
-      image.data);
-    */
+        image.data);
+      */
   }
 
   // Sequence:
@@ -248,5 +240,5 @@ inline namespace importer {
 
     return asset;
   }
-}
+  }
 }

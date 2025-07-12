@@ -18,17 +18,19 @@ class mr_importerRecipe(ConanFile):
     options = {"shared": [True, False]}
     default_options = {"shared": False}
 
-    exports_sources = "CMakeLists.txt", "src/*", "include/*"
+    exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake"
 
     def requirements(self):
-        self.requires("folly/2024.08.12.00")
-
         self.requires("fmt/10.2.1")
+        self.requires("folly/2024.08.12.00")
 
         self.requires("efsw/1.4.1")
         self.requires("meshoptimizer/0.23")
         self.requires("fastgltf/0.8.0")
         self.requires("stb/cci.20240531")
+
+        self.requires("mr-math/1.0.0")
+        self.requires("mr-manager/1.0.1")
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.26]")

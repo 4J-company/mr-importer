@@ -1,4 +1,5 @@
 #include "importer.hpp"
+#include "assets.hpp"
 
 namespace mr {
   inline namespace importer {

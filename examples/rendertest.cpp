@@ -1,6 +1,10 @@
 #include <filesystem>
-#include <mr-importer/importer.hpp>
+
+#include <mr-manager/manager.hpp>
+
 #include "render_polyscope.hpp"
+
+#include "mr-importer/importer.hpp"
 
 int main(int argc, char **argv) {
   if (argc != 2) {
@@ -8,10 +12,6 @@ int main(int argc, char **argv) {
     exit(47);
   }
 
-  auto handle = mr::Manager<mr::Asset>::get().create(std::filesystem::path(argv[1]));
-  handle.with(
-    [&](const mr::Asset &asset) {
-      render(asset.meshes);
-    }
-  );
+  auto handle = mr::Manager<mr::Asset>::get().create("id", std::filesystem::path(argv[1]));
+  render(handle->meshes);
 }

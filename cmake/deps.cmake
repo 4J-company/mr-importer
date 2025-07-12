@@ -6,11 +6,13 @@ file(
 )
 include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
 
-find_package(folly REQUIRED)
+find_package(fmt REQUIRED)
 find_package(efsw REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(stb REQUIRED)
+find_package(mr-math REQUIRED)
+find_package(mr-manager REQUIRED)
 
 CPMAddPackage("gh:4j-company/mr-contractor#master")
 CPMAddPackage("gh:nmwsharp/polyscope#master")
@@ -21,6 +23,8 @@ set(MR_IMPORTER_DEPS
   efsw::efsw
   stb::stb
   glm::glm
-  folly::folly
+  fmt::fmt
+  mr-math::mr-math
+  mr-manager::mr-manager
   mr-contractor-lib
 )
