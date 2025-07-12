@@ -1,21 +1,14 @@
 #include "mr-importer/assets.hpp"
 #include <polyscope/render/materials.h>
 
-#ifndef GLM_ENABLE_EXPERIMENTAL
-#define GLM_ENABLE_EXPERIMENTAL
-#endif
-
 #include "polyscope/polyscope.h"
 #include "polyscope/surface_mesh.h"
 
 #include <glm/glm.hpp>
-#include <mr-math/vec.hpp>
 
 #include <cstdint>
 #include <vector>
 #include <array>
-
-using mr::Vec3f;
 
 inline std::string remove_hashtags(std::string_view format_str) {
   std::string result;

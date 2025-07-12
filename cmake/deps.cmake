@@ -6,35 +6,25 @@ file(
 )
 include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
 
-CPMAddPackage("gh:SpartanJ/efsw#master")
-CPMAddPackage("gh:zeux/meshoptimizer#master")
-CPMAddPackage("gh:4j-company/fastgltf#main")
+find_package(fmt REQUIRED)
+find_package(efsw REQUIRED)
+find_package(meshoptimizer REQUIRED)
+find_package(fastgltf REQUIRED)
+find_package(stb REQUIRED)
+find_package(mr-math REQUIRED)
+find_package(mr-manager REQUIRED)
+
 CPMAddPackage("gh:4j-company/mr-contractor#master")
-CPMAddPackage("gh:4j-company/mr-math#master")
 CPMAddPackage("gh:nmwsharp/polyscope#master")
 
-if (NOT TARGET glm)
-cmake_policy(SET CMP0079 NEW)
-CPMFindPackage(
-  NAME glm
-  GITHUB_REPOSITORY icaven/glm
-  GIT_TAG master
-  OPTIONS
-    "GLM_BUILD_LIBRARY ON"
-    "GLM_ENABLE_CXX_20 ON"
+set(MR_IMPORTER_DEPS
+  meshoptimizer::meshoptimizer
+  fastgltf::fastgltf
+  efsw::efsw
+  stb::stb
+  glm::glm
+  fmt::fmt
+  mr-math::mr-math
+  mr-manager::mr-manager
+  mr-contractor-lib
 )
-endif()
-
-if (NOT TARGET libstb-image)
-  # download a single file from stb
-  file(
-    DOWNLOAD
-    https://raw.githubusercontent.com/nothings/stb/master/stb_image.h
-    ${CMAKE_CURRENT_BINARY_DIR}/_deps/stb-src/stb/stb_image.h
-    EXPECTED_HASH SHA256=594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3
-  )
-  add_library(libstb-image INTERFACE "")
-  target_include_directories(libstb-image INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/_deps/stb-src/)
-endif()
-
-set(MR_IMPORTER_DEPS fastgltf::fastgltf meshoptimizer libstb-image efsw mr-contractor-lib mr-math-lib glm::glm)

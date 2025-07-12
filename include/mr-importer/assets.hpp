@@ -1,18 +1,13 @@
 #pragma once
 
-#include <cstdint>
-#include <vector>
-
-#include <fastgltf/math.hpp>
-#include <glm/glm.hpp>
-#include <mr-math/vec.hpp>
-#include <mr-math/color.hpp>
+#include "def.hpp"
 
 namespace mr {
 inline namespace importer {
   using Position = glm::vec3;
   using Index = std::uint32_t;
   using Transform = glm::mat4x4;
+  using Color = glm::vec4;
   struct VertexAttributes {
     Color color;
     glm::vec3 normal;
@@ -56,7 +51,7 @@ inline namespace importer {
     uint32_t height;
   };
   struct SamplerData {
-    std::vector<Vec2f> texcoords;
+    std::vector<glm::vec2> texcoords;
   };
   struct TextureData {
     ImageData image;
@@ -71,6 +66,9 @@ inline namespace importer {
   struct Asset {
     std::vector<Mesh> meshes;
     std::vector<MaterialData> materials;
+
+    Asset() = default;
+    Asset(const std::filesystem::path &path);
   };
 }
 }

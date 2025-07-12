@@ -1,12 +1,9 @@
 #include "raylib.h"
 #include "raymath.h"
 #include <glm/glm.hpp>
-#include <mr-math/vec.hpp>
 #include <cstdint>
 #include <vector>
 #include <cmath> // For atan2f, sinf, cosf
-
-using mr::Vec3f;
 
 inline void render(std::vector<glm::vec3> positions, std::vector<uint32_t> indices) {
   constexpr int screenWidth = 1800;

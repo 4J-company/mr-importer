@@ -8,6 +8,7 @@ include(cmake/deps.cmake)
 add_library(mr-importer-lib
   include/mr-importer/def.hpp
   include/mr-importer/assets.hpp
+  include/mr-importer/assets.cpp
   include/mr-importer/importer.hpp
   include/mr-importer/loader.hpp
   include/mr-importer/loader.cpp
@@ -17,6 +18,7 @@ add_library(mr-importer-lib
 target_compile_features(mr-importer-lib PUBLIC cxx_std_23)
 target_link_libraries(mr-importer-lib PUBLIC ${MR_IMPORTER_DEPS})
 target_include_directories(mr-importer-lib PUBLIC include)
+target_precompile_headers(mr-importer-lib PUBLIC include/mr-importer/def.hpp)
 
 add_executable(
   mr-importer-tests
