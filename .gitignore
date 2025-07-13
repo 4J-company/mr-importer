@@ -36,5 +36,6 @@ build/
 out/
 compile_commands.json
 bin/
+CMakeUserPresets.json
 
 *.ini
