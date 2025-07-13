@@ -14,6 +14,8 @@ add_library(mr-importer-lib
   include/mr-importer/loader.cpp
   include/mr-importer/optimizer.hpp
   include/mr-importer/optimizer.cpp
+  include/mr-importer/compiler.hpp
+  include/mr-importer/compiler.cpp
 )
 target_compile_features(mr-importer-lib PUBLIC cxx_std_23)
 target_link_libraries(mr-importer-lib PUBLIC ${MR_IMPORTER_DEPS})

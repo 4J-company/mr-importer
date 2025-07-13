@@ -10,7 +10,11 @@ find_package(fmt REQUIRED)
 find_package(efsw REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(fastgltf REQUIRED)
+
+find_package(slang REQUIRED)
+
 find_package(stb REQUIRED)
+
 find_package(mr-math REQUIRED)
 find_package(mr-manager REQUIRED)
 
@@ -24,6 +28,7 @@ set(MR_IMPORTER_DEPS
   stb::stb
   glm::glm
   fmt::fmt
+  slang::slang
   mr-math::mr-math
   mr-manager::mr-manager
   mr-contractor-lib
