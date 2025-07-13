@@ -29,7 +29,13 @@ add_executable(
 target_link_libraries(mr-importer-tests PUBLIC mr-importer-lib gtest_main gtest)
 
 add_executable(
-  mr-importer-example
+  mr-importer-mesh-example
   examples/rendertest.cpp
 )
-target_link_libraries(mr-importer-example PUBLIC mr-importer-lib polyscope)
+target_link_libraries(mr-importer-mesh-example PUBLIC mr-importer-lib polyscope)
+
+add_executable(
+  mr-importer-shader-example
+  examples/shadercompiletest.cpp
+)
+target_link_libraries(mr-importer-shader-example PUBLIC mr-importer-lib)

@@ -8,7 +8,7 @@
 
 int main(int argc, char **argv) {
   if (argc != 2) {
-    printf("Usage: mr-importer-example <filename>");
+    printf("Usage: mr-importer-mesh-example <filename>");
     exit(47);
   }
 
