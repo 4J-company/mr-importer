@@ -12,9 +12,9 @@ find_package(meshoptimizer REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(stb REQUIRED)
 find_package(mr-math REQUIRED)
+find_package(mr-utils REQUIRED)
 find_package(mr-manager REQUIRED)
 
-CPMAddPackage("gh:4j-company/mr-contractor#master")
 CPMAddPackage("gh:nmwsharp/polyscope#master")
 
 set(MR_IMPORTER_DEPS
@@ -25,6 +25,11 @@ set(MR_IMPORTER_DEPS
   glm::glm
   fmt::fmt
   mr-math::mr-math
+  mr-utils::mr-utils
   mr-manager::mr-manager
-  mr-contractor-lib
 )
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  find_package(TBB REQUIRED)
+  set(MR_IMPORTER_DEPS ${MR_IMPORTER_DEPS} onetbb::onetbb)
+endif()

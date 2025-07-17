@@ -12,7 +12,7 @@ inline namespace importer {
     size_t lod_count = 0;
 
     if (lod_scale > 1) {
-        fmt::println("LOD Scale greater than 1. Needs investigation");
+        MR_WARNING("LOD Scale greater than 1. Needs investigation");
         lod_scale = 0.1;
     }
 
@@ -64,10 +64,10 @@ inline namespace importer {
         options, &lod_error)
     );
 
-    fmt::println("LOD {}:", lod_index);
-    fmt::println("\tTarget index count: {}", target_index_count);
-    fmt::println("\tIs sparse: {}", is_sparse);
-    fmt::println("\tError: {}", lod_error);
+    MR_INFO("LOD {}:", lod_index);
+    MR_INFO("\tTarget index count: {}", target_index_count);
+    MR_INFO("\tIs sparse: {}", is_sparse);
+    MR_INFO("\tError: {}", lod_error);
 
     meshopt_optimizeVertexCache(result_indices.data(), result_indices.data(), result_indices.size(), positions.size());
 

@@ -47,11 +47,11 @@ inline namespace importer {
   // material-related data
   struct ImageData {
     std::unique_ptr<Color[]> pixels;
-    uint32_t width;
-    uint32_t height;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t depth = 1;
   };
   struct SamplerData {
-    std::vector<glm::vec2> texcoords;
   };
   struct TextureData {
     ImageData image;
@@ -59,9 +59,34 @@ inline namespace importer {
   };
   struct MaterialData {
     std::vector<TextureData> textures;
+
+    Color base_color_factor;
+    Color emissive_color;
+    float emissive_strength;
+    float normal_map_intensity;
+
+    float roughness_factor;
+    float metallic_factor;
   };
 
   // TODO: animation-related data
+
+  struct Camera {
+  };
+
+  struct DirectionalLight {
+    Color color;
+    float intensity;
+  };
+  struct SpotLight {
+    Color color;
+    float intensity;
+  };
+  struct PointLight {
+    Color color;
+    float intensity;
+    float radius;
+  };
 
   struct Asset {
     std::vector<Mesh> meshes;
