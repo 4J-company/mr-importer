@@ -12,6 +12,7 @@ find_package(meshoptimizer REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(stb REQUIRED)
 find_package(mr-math REQUIRED)
+find_package(mr-utils REQUIRED)
 find_package(mr-manager REQUIRED)
 
 CPMAddPackage("gh:4j-company/mr-contractor#master")
@@ -26,5 +27,6 @@ set(MR_IMPORTER_DEPS
   fmt::fmt
   mr-math::mr-math
   mr-manager::mr-manager
+  mr-utils::mr-utils
   mr-contractor-lib
 )

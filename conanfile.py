@@ -22,6 +22,7 @@ class mr_importerRecipe(ConanFile):
 
     def requirements(self):
         self.requires("fmt/10.2.1")
+        self.requires("spdlog/1.14.1", override=True)
         self.requires("folly/2024.08.12.00")
 
         self.requires("efsw/1.4.1")
@@ -30,6 +31,7 @@ class mr_importerRecipe(ConanFile):
         self.requires("stb/cci.20240531")
 
         self.requires("mr-math/1.0.0")
+        self.requires("mr-utils/1.0.2")
         self.requires("mr-manager/1.0.1")
 
     def build_requirements(self):
