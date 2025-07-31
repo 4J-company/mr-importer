@@ -31,7 +31,7 @@ class mr_importerRecipe(ConanFile):
         self.requires("stb/cci.20240531")
 
         self.requires("mr-math/1.0.0")
-        self.requires("mr-utils/1.0.2")
+        self.requires("mr-utils/1.0.3")
         self.requires("mr-manager/1.0.1")
 
     def build_requirements(self):
