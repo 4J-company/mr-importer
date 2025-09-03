@@ -5,7 +5,7 @@
 
 namespace mr {
 inline namespace importer {
-  static std::optional<fastgltf::Asset> getAssetFromPath(const std::filesystem::path &path) {
+  static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &path) {
     using namespace fastgltf;
 
     auto [err, data] = GltfDataBuffer::FromPath(path);
@@ -27,7 +27,7 @@ inline namespace importer {
     return std::move(asset);
   }
 
-  static std::optional<std::reference_wrapper<const fastgltf::Accessor>> getAcessorByName(
+  static std::optional<std::reference_wrapper<const fastgltf::Accessor>> get_accessor_by_name(
     const fastgltf::Asset &asset,
     const fastgltf::Primitive &primitive,
     std::string_view name)
@@ -57,13 +57,13 @@ inline namespace importer {
     return std::ref(accessor);
   }
 
-  static std::optional<Mesh> getMeshFromPrimitive(const fastgltf::Asset &asset, const fastgltf::Primitive &primitive) {
+  static std::optional<Mesh> get_mesh_from_primitive(const fastgltf::Asset &asset, const fastgltf::Primitive &primitive) {
     using namespace fastgltf;
 
     Mesh mesh;
 
     // Process POSITION attribute
-    std::optional<std::reference_wrapper<const Accessor>> positions = getAcessorByName(asset, primitive, "POSITION");
+    std::optional<std::reference_wrapper<const Accessor>> positions = get_accessor_by_name(asset, primitive, "POSITION");
     if (positions.has_value()) {
       mesh.positions.reserve(positions.value().get().count);
       fastgltf::iterateAccessor<glm::vec3>(asset, positions.value(), [&](glm::vec3 v) {
@@ -72,7 +72,7 @@ inline namespace importer {
     }
 
     // Process NORMAL attribute
-    std::optional<std::reference_wrapper<const Accessor>> normals = getAcessorByName(asset, primitive, "NORMAL");
+    std::optional<std::reference_wrapper<const Accessor>> normals = get_accessor_by_name(asset, primitive, "NORMAL");
     if (normals.has_value()) {
       mesh.attributes.resize(normals.value().get().count);
       fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, normals.value(), [&](glm::vec3 v, int index) {
@@ -90,7 +90,7 @@ inline namespace importer {
     return mesh;
   }
 
-  static std::vector<Mesh> getMeshesFromAsset(fastgltf::Asset& asset) {
+  static std::vector<Mesh> get_meshes_from_asset(fastgltf::Asset& asset) {
     using namespace fastgltf;
 
     std::vector<Mesh> result;
@@ -109,7 +109,7 @@ inline namespace importer {
       const fastgltf::Mesh& gltfMesh = asset.meshes[i];
       for (int j = 0; j < gltfMesh.primitives.size(); j++) {
         const auto& primitive = gltfMesh.primitives[j];
-        std::optional<Mesh> mesh_opt = getMeshFromPrimitive(asset, primitive);
+        std::optional<Mesh> mesh_opt = get_mesh_from_primitive(asset, primitive);
         if (mesh_opt.has_value()) {
           mesh_opt->transforms = transforms[i];
           mesh_opt->name = gltfMesh.name;
@@ -121,7 +121,7 @@ inline namespace importer {
     return result;
   }
 
-  static std::optional<ImageData> getImageFromGLTF(const fastgltf::Asset &asset, const fastgltf::Image &image) {
+  static std::optional<ImageData> get_image_from_gltf(const fastgltf::Asset &asset, const fastgltf::Image &image) {
     ImageData new_image {};
 
     int width, height, nrChannels;
@@ -172,7 +172,7 @@ inline namespace importer {
     return new_image;
   }
 
-  static std::expected<TextureData, std::string_view> getTextureFromGLTF(fastgltf::Asset &asset, const fastgltf::TextureInfo &texinfo) {
+  static std::expected<TextureData, std::string_view> get_texture_from_gltf(fastgltf::Asset &asset, const fastgltf::TextureInfo &texinfo) {
     fastgltf::Texture &tex = asset.textures[texinfo.textureIndex];
 
     if (!tex.imageIndex.has_value()) {
@@ -182,7 +182,7 @@ inline namespace importer {
     size_t img_idx = tex.imageIndex.value();
 
     fastgltf::Image &img = asset.images[img_idx];
-    ImageData img_data = *ASSERT_VAL(getImageFromGLTF(asset, img));
+    ImageData img_data = *ASSERT_VAL(get_image_from_gltf(asset, img));
 
     return TextureData { std::move(img_data), SamplerData {} };
   }
@@ -195,7 +195,7 @@ inline namespace importer {
   }
 
 
-  static std::vector<MaterialData> getMaterialsFromAsset(fastgltf::Asset &asset) {
+  static std::vector<MaterialData> get_materials_from_asset(fastgltf::Asset &asset) {
     std::vector<MaterialData> materials;
     materials.resize(asset.materials.size());
 
@@ -212,7 +212,7 @@ inline namespace importer {
       res.emissive_strength = material.emissiveStrength;
 
       if (material.pbrData.baseColorTexture.has_value()) {
-        auto exp = getTextureFromGLTF(asset, material.pbrData.baseColorTexture.value());
+        auto exp = get_texture_from_gltf(asset, material.pbrData.baseColorTexture.value());
         if (exp.has_value()) {
           res.textures.emplace_back(std::move(exp.value()));
         }
@@ -222,7 +222,7 @@ inline namespace importer {
       }
 
       if (material.normalTexture.has_value()) {
-        auto exp = getTextureFromGLTF(asset, material.normalTexture.value());
+        auto exp = get_texture_from_gltf(asset, material.normalTexture.value());
         if (exp.has_value()) {
           res.textures.emplace_back(std::move(exp.value()));
         }
@@ -232,7 +232,7 @@ inline namespace importer {
       }
 
       if (material.pbrData.metallicRoughnessTexture.has_value()) {
-        auto exp = getTextureFromGLTF(asset, material.pbrData.metallicRoughnessTexture.value());
+        auto exp = get_texture_from_gltf(asset, material.pbrData.metallicRoughnessTexture.value());
         if (exp.has_value()) {
           res.textures.emplace_back(std::move(exp.value()));
         }
@@ -242,7 +242,7 @@ inline namespace importer {
       }
 
       if (material.emissiveTexture.has_value()) {
-        auto exp = getTextureFromGLTF(asset, material.emissiveTexture.value());
+        auto exp = get_texture_from_gltf(asset, material.emissiveTexture.value());
         if (exp.has_value()) {
           res.textures.emplace_back(std::move(exp.value()));
         }
@@ -271,12 +271,12 @@ inline namespace importer {
   //           - extract from texture URI into ImageData using stb
   //         - compose into TextureData
   Asset load(std::filesystem::path path) {
-    fastgltf::Asset asset = *ASSERT_VAL(getAssetFromPath(path));
+    fastgltf::Asset asset = *ASSERT_VAL(get_asset_from_path(path));
 
     importer::Asset res;
 
-    res.meshes = getMeshesFromAsset(asset);
-    res.materials = getMaterialsFromAsset(asset);
+    res.meshes = get_meshes_from_asset(asset);
+    res.materials = get_materials_from_asset(asset);
 
     return res;
   }
