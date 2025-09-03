@@ -18,7 +18,7 @@ class mr_importerRecipe(ConanFile):
     options = {"shared": [True, False]}
     default_options = {"shared": False}
 
-    exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake"
+    exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake", "tests/main.cpp", "examples/*"
 
     def requirements(self):
         self.requires("fmt/10.2.1")
