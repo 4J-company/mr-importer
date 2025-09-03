@@ -29,6 +29,9 @@ class mr_importerRecipe(ConanFile):
         self.requires("efsw/1.4.1")
         self.requires("meshoptimizer/0.23")
         self.requires("fastgltf/0.8.0")
+
+        self.requires("slang/2025.10.4")
+
         self.requires("stb/cci.20240531")
 
         if self.settings.compiler in ("gcc", "clang"):

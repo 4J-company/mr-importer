@@ -35,7 +35,8 @@
 build/
 out/
 compile_commands.json
-ABeautifulGame
+bin/
+CMakeUserPresets.json
 
 *.ini
 CMakeUserPresets.json

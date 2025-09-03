@@ -32,6 +32,10 @@
 
 #include <meshoptimizer.h>
 
+#include <slang.h>
+#include <slang-com-ptr.h>
+#include <slang-com-helper.h>
+
 #include <mr-manager/manager.hpp>
 #include <mr-math/math.hpp>
 #include <mr-utils/log.hpp>

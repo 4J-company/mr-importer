@@ -73,6 +73,13 @@ inline namespace importer {
 
   // TODO: animation-related data
 
+  struct Shader {
+    Slang::ComPtr<slang::IBlob> spirv;
+
+    Shader() = default;
+    Shader(const std::filesystem::path &path);
+  };
+  
   struct Camera {
   };
 
