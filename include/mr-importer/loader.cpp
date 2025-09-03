@@ -133,7 +133,7 @@ inline namespace importer {
           assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
           assert(filePath.uri.isLocalPath());   // We're only capable of loading local files.
 
-          const std::string path (filePath.uri.path().begin(), filePath.uri.path().end());
+          const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());
 
           new_image.pixels.reset((Color*)stbi_loadf(path.c_str(), &width, &height, &nrChannels, 4));
           new_image.width = width;
@@ -179,12 +179,12 @@ inline namespace importer {
       return std::unexpected("Texture is in unsupported format (DDS, WEBP, etc)");
     }
 
-    size_t imgidx = tex.imageIndex.value();
+    size_t img_idx = tex.imageIndex.value();
 
-    fastgltf::Image &img = asset.images[imgidx];
-    ImageData imgdata = *ASSERT_VAL(getImageFromGLTF(asset, img));
+    fastgltf::Image &img = asset.images[img_idx];
+    ImageData img_data = *ASSERT_VAL(getImageFromGLTF(asset, img));
 
-    return TextureData { std::move(imgdata), SamplerData {} };
+    return TextureData { std::move(img_data), SamplerData {} };
   }
 
   static Color color_from_nvec4(fastgltf::math::nvec4 v) {

@@ -46,12 +46,14 @@ inline namespace importer {
 
   // material-related data
   struct ImageData {
+    // unique ptr because memory is allocated by stb and passed to us
     std::unique_ptr<Color[]> pixels;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t depth = 1;
   };
   struct SamplerData {
+    // TODO: copy fastgltf::Sampler
   };
   struct TextureData {
     ImageData image;
