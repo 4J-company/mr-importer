@@ -18,10 +18,12 @@ class mr_importerRecipe(ConanFile):
     options = {"shared": [True, False]}
     default_options = {"shared": False}
 
-    exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake"
+    exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake", "tests/main.cpp", "examples/*"
 
     def requirements(self):
         self.requires("fmt/10.2.1")
+        self.requires("spdlog/1.14.1", override=True)
+        self.requires("libdwarf/0.9.1", override=True)
         self.requires("folly/2024.08.12.00")
 
         self.requires("efsw/1.4.1")
@@ -32,7 +34,11 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("stb/cci.20240531")
 
-        self.requires("mr-math/1.0.0")
+        if self.settings.compiler in ("gcc", "clang"):
+            self.requires("onetbb/2022.2.0")
+
+        self.requires("mr-math/1.1.2")
+        self.requires("mr-utils/1.0.4")
         self.requires("mr-manager/1.0.1")
 
     def build_requirements(self):

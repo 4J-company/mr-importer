@@ -39,3 +39,4 @@ bin/
 CMakeUserPresets.json
 
 *.ini
+CMakeUserPresets.json

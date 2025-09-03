@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <execution>
 #include <filesystem>
 #include <functional>
 #include <tuple>
@@ -36,32 +37,11 @@
 #include <slang-com-helper.h>
 
 #include <mr-manager/manager.hpp>
-#include <mr-contractor/contractor.hpp>
+#include <mr-math/math.hpp>
+#include <mr-utils/log.hpp>
+#include <mr-utils/assert.hpp>
 
 namespace mr {
-  template <typename Ret, typename... Args> struct TaskPrototypeBuilder;
-
-  template <typename Ret, typename... Args>
-  auto get_task_prototype() {
-    return std::ref(TaskPrototypeBuilder<Ret, Args...>::create());
-  }
-
-  template <typename ResultT, typename ...Args>
-  auto make_task(Args ...args) {
-    if constexpr (sizeof...(args) > 1) {
-      return mr::apply(
-        get_task_prototype<ResultT, Args...>(),
-        std::forward_as_tuple<Args...>(args...)
-      );
-    }
-    else {
-      return mr::apply(
-        get_task_prototype<ResultT, Args...>(),
-        args...
-      );
-    }
-  }
-
 inline namespace importer {
 }
 }
