@@ -3,45 +3,38 @@
 #include <array>
 #include <cmath>
 #include <execution>
+#include <fastgltf/core.hpp>
+#include <fastgltf/glm_element_traits.hpp>
+#include <fastgltf/math.hpp>
+#include <fastgltf/tools.hpp>
+#include <fastgltf/types.hpp>
 #include <filesystem>
-#include <functional>
-#include <tuple>
-#include <utility>
-#include <vector>
-#include <memory>
-#include <string>
-#include <span>
-
 #include <fmt/core.h>
-
-#include <stb_image.h>
-
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include <functional>
 #include <glm/detail/qualifier.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
-
-#include <fastgltf/core.hpp>
-#include <fastgltf/tools.hpp>
-#include <fastgltf/types.hpp>
-#include <fastgltf/math.hpp>
-#include <fastgltf/glm_element_traits.hpp>
-
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <memory>
 #include <meshoptimizer.h>
-
-#include <slang.h>
-#include <slang-com-ptr.h>
-#include <slang-com-helper.h>
-
 #include <mr-manager/manager.hpp>
 #include <mr-math/math.hpp>
-#include <mr-utils/log.hpp>
 #include <mr-utils/assert.hpp>
+#include <mr-utils/log.hpp>
+#include <slang-com-helper.h>
+#include <slang-com-ptr.h>
+#include <slang.h>
+#include <span>
+#include <stb_image.h>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 namespace mr {
 inline namespace importer {
 }
-}
+} // namespace mr

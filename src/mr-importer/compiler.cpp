@@ -2,7 +2,7 @@
 #include <slang-com-ptr.h>
 #include <slang.h>
 
-#include "compiler.hpp"
+#include "mr-importer/compiler.hpp"
 
 // forward declarations (implementations at the end)
 static Slang::ComPtr<slang::ISession> get_or_create_session();

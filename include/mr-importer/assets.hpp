@@ -14,36 +14,36 @@ inline namespace importer {
     glm::vec3 tangent;
     glm::vec3 bitangent;
   };
-
+  
   // mesh-related data
   struct PositionArray : std::vector<Position> {
     using std::vector<Position>::vector;
     using std::vector<Position>::operator=;
   };
-
+  
   struct IndexArray : std::vector<Index> {
     using std::vector<Index>::vector;
     using std::vector<Index>::operator=;
   };
-
+  
   struct VertexAttributesArray : std::vector<VertexAttributes> {
     using std::vector<VertexAttributes>::vector;
     using std::vector<VertexAttributes>::operator=;
   };
-
+  
   struct Mesh {
     struct LOD {
-	    IndexArray indices;
-	    IndexArray shadow_indices;
+      IndexArray indices;
+      IndexArray shadow_indices;
     };
-
+  
     PositionArray positions;
     VertexAttributesArray attributes;
     std::vector<LOD> lods;
     std::vector<Transform> transforms;
     std::string name;
   };
-
+  
   // material-related data
   struct ImageData {
     // unique ptr because memory is allocated by stb and passed to us
@@ -61,28 +61,27 @@ inline namespace importer {
   };
   struct MaterialData {
     std::vector<TextureData> textures;
-
+  
     Color base_color_factor;
     Color emissive_color;
     float emissive_strength;
     float normal_map_intensity;
-
+  
     float roughness_factor;
     float metallic_factor;
   };
-
+  
   // TODO: animation-related data
-
+  
   struct Shader {
     Slang::ComPtr<slang::IBlob> spirv;
-
+  
     Shader() = default;
-    Shader(const std::filesystem::path &path);
+    Shader(const std::filesystem::path& path);
   };
   
-  struct Camera {
-  };
-
+  struct Camera {};
+  
   struct DirectionalLight {
     Color color;
     float intensity;
@@ -96,13 +95,13 @@ inline namespace importer {
     float intensity;
     float radius;
   };
-
+  
   struct Asset {
     std::vector<Mesh> meshes;
     std::vector<MaterialData> materials;
-
+  
     Asset() = default;
-    Asset(const std::filesystem::path &path);
+    Asset(const std::filesystem::path& path);
   };
-}
-}
+} // namespace importer
+} // namespace mr

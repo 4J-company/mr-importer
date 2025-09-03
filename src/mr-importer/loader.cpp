@@ -1,7 +1,7 @@
-#include "def.hpp"
+#include "mr-importer/def.hpp"
 
-#include "loader.hpp"
-#include "assets.hpp"
+#include "mr-importer/loader.hpp"
+#include "mr-importer/assets.hpp"
 
 namespace mr {
 inline namespace importer {
