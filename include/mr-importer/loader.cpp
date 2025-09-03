@@ -5,6 +5,28 @@
 
 namespace mr {
 inline namespace importer {
+  static std::optional<fastgltf::Asset> getAssetFromPath(const std::filesystem::path &path) {
+    using namespace fastgltf;
+
+    auto [err, data] = GltfDataBuffer::FromPath(path);
+    if (err != Error::None) {
+      MR_ERROR("Failed to parse GLTF file");
+      MR_ERROR("Error code: {}", (int)err);
+      return std::nullopt; // Failed to load GLTF data
+    }
+
+    Parser parser;
+    auto options = Options::LoadExternalBuffers | Options::LoadExternalImages;
+    auto [error, asset] = parser.loadGltf(data, path.parent_path(), options);
+    if (error != Error::None) {
+      MR_ERROR("Failed to parse GLTF file");
+      MR_ERROR("Error code: {}", (int)error);
+      return std::nullopt;
+    }
+
+    return std::move(asset);
+  }
+
   static std::optional<std::reference_wrapper<const fastgltf::Accessor>> getAcessorByName(
     const fastgltf::Asset &asset,
     const fastgltf::Primitive &primitive,
@@ -14,21 +36,21 @@ inline namespace importer {
 
     auto attr = primitive.findAttribute(name);
     if (attr == primitive.attributes.cend()) {
-      fmt::println("primitive didn't contain {} attribute", name);
+      MR_ERROR("primitive didn't contain {} attribute", name);
       return std::nullopt;
     }
     size_t acessor_id = attr->accessorIndex;
     if (acessor_id >= asset.accessors.size()) {
-      fmt::println("primitive didn't contain {} accessor", name);
+      MR_ERROR("primitive didn't contain {} accessor", name);
       return std::nullopt;
     }
     const Accessor& accessor = asset.accessors[acessor_id];
     if (accessor.type != AccessorType::Vec3 || accessor.componentType != ComponentType::Float) {
-      fmt::println("primitive's itions were in wrong format (not Vec3f)");
+      MR_ERROR("primitive's itions were in wrong format (not Vec3f)");
       return std::nullopt;
     }
     if (!accessor.bufferViewIndex.has_value()) {
-      fmt::println("primitive didn't contain buffer view");
+      MR_ERROR("primitive didn't contain buffer view");
       return std::nullopt;
     }
 
@@ -68,34 +90,20 @@ inline namespace importer {
     return mesh;
   }
 
-  static std::vector<Mesh> getMeshesFromGLTF(std::filesystem::path path) {
+  static std::vector<Mesh> getMeshesFromAsset(fastgltf::Asset& asset) {
     using namespace fastgltf;
 
     std::vector<Mesh> result;
-
-    auto [err, data] = GltfDataBuffer::FromPath(path);
-    if (err != Error::None) {
-      return {}; // Failed to load GLTF data
-    }
-
-    Parser parser;
-    auto options = Options::LoadExternalBuffers | Options::LoadExternalImages;
-    auto [error, asset] = parser.loadGltf(data, path.parent_path(), options);
-    if (error != Error::None) {
-      fmt::println("Failed to parse GLTF file");
-      fmt::println("Error code: {}", (int)error);
-      return {};
-    }
 
     std::vector<std::vector<glm::mat4>> transforms;
     transforms.resize(asset.meshes.size());
     fastgltf::iterateSceneNodes(asset, 0, fastgltf::math::fmat4x4(),
       [&](fastgltf::Node& node, fastgltf::math::fmat4x4 matrix) {
-          if (node.meshIndex.has_value()) {
-            transforms[*node.meshIndex].push_back(glm::make_mat4(matrix.data()));
-          }
+        if (node.meshIndex.has_value()) {
+          transforms[*node.meshIndex].push_back(glm::make_mat4(matrix.data()));
         }
-      );
+      }
+    );
 
     for (int i = 0; i < asset.meshes.size(); i++) {
       const fastgltf::Mesh& gltfMesh = asset.meshes[i];
@@ -113,111 +121,140 @@ inline namespace importer {
     return result;
   }
 
-  static std::optional<ImageData> loadImageFromURI(fastgltf::sources::URI& filePath) {
-    assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-    assert(filePath.uri.isLocalPath()); // We're only capable of loading
+  static std::optional<ImageData> getImageFromGLTF(const fastgltf::Asset &asset, const fastgltf::Image &image) {
+    ImageData new_image {};
 
     int width, height, nrChannels;
 
-    Color* dataptr = (Color*)stbi_load(filePath.uri.c_str(), &width, &height, &nrChannels, 4);
+    std::visit(
+      fastgltf::visitor {
+        [](auto& arg) {},
+        [&](fastgltf::sources::URI& filePath) {
+          assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
+          assert(filePath.uri.isLocalPath());   // We're only capable of loading local files.
 
-    if (not dataptr) {
-      return std::nullopt;
-    }
+          const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());
 
-    return ImageData{
-      .pixels = std::unique_ptr<Color[]>(dataptr),
-      .width = (uint32_t)width,
-      .height = (uint32_t)height,
-    };
-  }
-
-  static std::optional<ImageData> loadImageFromVector(fastgltf::sources::Vector& vector) {
-    int width, height, nrChannels;
-
-    Color* dataptr = (Color*)stbi_load_from_memory((unsigned char *)vector.bytes.data(), (int)vector.bytes.size(), &width, &height, &nrChannels, 4);
-
-    if (not dataptr) {
-      return std::nullopt;
-    }
-
-    return ImageData{
-      .pixels = std::unique_ptr<Color[]>(dataptr),
-      .width = (uint32_t)width,
-      .height = (uint32_t)height,
-    };
-  }
-
-  static std::optional<ImageData> getImagesFromGLTF(const fastgltf::Asset &asset, const fastgltf::Image &image) {
-    ImageData newImage {};
-
-    int width, height, nrChannels;
-
-    std::visit(fastgltf::visitor {
-      [](auto &arg){},
-      [&](fastgltf::sources::URI& filePath) {
-      },
-      [&](fastgltf::sources::Vector& vector) {
-      },
-      [&](fastgltf::sources::BufferView& view) {
-      }
-    }, image.data);
-
-    return newImage;
-
-    /*
-      std::visit(
-        fastgltf::visitor {
-          [](auto& arg) {},
-          [&](fastgltf::sources::URI& filePath) {
-            assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-            assert(filePath.uri.isLocalPath()); // We're only capable of loading
-            // local files.
-
-            const std::string path(filePath.uri.path().begin(),
-                                   filePath.uri.path().end()); // Thanks C++.
-            unsigned char* dataptr = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
-            if (dataptr) {
-              VkExtent3D imagesize;
-              imagesize.width = width;
-              imagesize.height = height;
-              imagesize.depth = 1;
-            }
-          },
-          [&](fastgltf::sources::Vector& vector) {
-            unsigned char* data = stbi_load_from_memory(vector.bytes.data(), static_cast<int>(vector.bytes.size()),
-                                                        &width, &height, &nrChannels, 4);
-            if (data) {
-              VkExtent3D imagesize;
-              imagesize.width = width;
-              imagesize.height = height;
-              imagesize.depth = 1;
-            }
-          },
-          [&](fastgltf::sources::BufferView& view) {
-            auto& bufferView = asset.bufferViews[view.bufferViewIndex];
-            auto& buffer = asset.buffers[bufferView.bufferIndex];
-
-            std::visit(fastgltf::visitor { // We only care about VectorWithMime here, because we
-              // specify LoadExternalBuffers, meaning all buffers
-              // are already loaded into a vector.
-              [](auto& arg) {},
-              [&](fastgltf::sources::Vector& vector) {
-                unsigned char* data = stbi_load_from_memory(vector.bytes.data() + bufferView.byteOffset,
-                                                            static_cast<int>(bufferView.byteLength),
-                                                            &width, &height, &nrChannels, 4);
-                if (data) {
-                  VkExtent3D imagesize;
-                  imagesize.width = width;
-                  imagesize.height = height;
-                  imagesize.depth = 1;
-                }
-              } },
-                       buffer.data);
-          },
+          new_image.pixels.reset((Color*)stbi_loadf(path.c_str(), &width, &height, &nrChannels, 4));
+          new_image.width = width;
+          new_image.height = height;
+          new_image.depth = 1;
         },
-        image.data);
-      */
+        [&](fastgltf::sources::Vector& vector) {
+          new_image.pixels.reset((Color*)stbi_loadf_from_memory((uint8_t*)vector.bytes.data(),
+                                 static_cast<int>(vector.bytes.size()),
+                                 &width, &height, &nrChannels, 4));
+          new_image.width = width;
+          new_image.height = height;
+          new_image.depth = 1;
+        },
+        [&](fastgltf::sources::BufferView& view) {
+          auto& bufferView = asset.bufferViews[view.bufferViewIndex];
+          auto& buffer = asset.buffers[bufferView.bufferIndex];
+
+          std::visit(fastgltf::visitor { // We only care about VectorWithMime here, because we
+                                         // specify LoadExternalBuffers, meaning all buffers
+                                         // are already loaded into a vector.
+            [](auto& arg) { MR_WARNING("Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)"); },
+            [&](fastgltf::sources::Vector& vector) {
+              new_image.pixels.reset((Color*)stbi_loadf_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
+                                                        static_cast<int>(bufferView.byteLength),
+                                                        &width, &height, &nrChannels, 4));
+              new_image.width = width;
+              new_image.height = height;
+              new_image.depth = 1;
+            }
+          }, buffer.data);
+        },
+      },
+      image.data);
+
+    return new_image;
+  }
+
+  static std::expected<TextureData, std::string_view> getTextureFromGLTF(fastgltf::Asset &asset, const fastgltf::TextureInfo &texinfo) {
+    fastgltf::Texture &tex = asset.textures[texinfo.textureIndex];
+
+    if (!tex.imageIndex.has_value()) {
+      return std::unexpected("Texture is in unsupported format (DDS, WEBP, etc)");
+    }
+
+    size_t img_idx = tex.imageIndex.value();
+
+    fastgltf::Image &img = asset.images[img_idx];
+    ImageData img_data = *ASSERT_VAL(getImageFromGLTF(asset, img));
+
+    return TextureData { std::move(img_data), SamplerData {} };
+  }
+
+  static Color color_from_nvec4(fastgltf::math::nvec4 v) {
+    return { v.x(), v.y(), v.z(), v.w() };
+  }
+  static Color color_from_nvec3(fastgltf::math::nvec3 v) {
+    return { v.x(), v.y(), v.z(), 1 };
+  }
+
+
+  static std::vector<MaterialData> getMaterialsFromAsset(fastgltf::Asset &asset) {
+    std::vector<MaterialData> materials;
+    materials.resize(asset.materials.size());
+
+    auto io = std::ranges::iota_view {0uz, asset.materials.size()};
+    std::for_each(std::execution::seq, io.begin(), io.end(), [&asset, &materials] (size_t i) {
+      fastgltf::Material &material = asset.materials[i];
+      MaterialData res;
+      
+      res.base_color_factor = color_from_nvec4(material.pbrData.baseColorFactor);
+      res.roughness_factor = material.pbrData.roughnessFactor;
+      res.metallic_factor = material.pbrData.metallicFactor;
+      res.emissive_color = color_from_nvec3(material.emissiveFactor);
+      res.normal_map_intensity = 0;
+      res.emissive_strength = material.emissiveStrength;
+
+      if (material.pbrData.baseColorTexture.has_value()) {
+        auto exp = getTextureFromGLTF(asset, material.pbrData.baseColorTexture.value());
+        if (exp.has_value()) {
+          res.textures.emplace_back(std::move(exp.value()));
+        }
+        else {
+          MR_ERROR("Loading Base Color texture - ", exp.error());
+        }
+      }
+
+      if (material.normalTexture.has_value()) {
+        auto exp = getTextureFromGLTF(asset, material.normalTexture.value());
+        if (exp.has_value()) {
+          res.textures.emplace_back(std::move(exp.value()));
+        }
+        else {
+          MR_WARNING("Loading Base Color texture - ", exp.error());
+        }
+      }
+
+      if (material.pbrData.metallicRoughnessTexture.has_value()) {
+        auto exp = getTextureFromGLTF(asset, material.pbrData.metallicRoughnessTexture.value());
+        if (exp.has_value()) {
+          res.textures.emplace_back(std::move(exp.value()));
+        }
+        else {
+          MR_ERROR("Loading Base Color texture - ", exp.error());
+        }
+      }
+
+      if (material.emissiveTexture.has_value()) {
+        auto exp = getTextureFromGLTF(asset, material.emissiveTexture.value());
+        if (exp.has_value()) {
+          res.textures.emplace_back(std::move(exp.value()));
+        }
+        else {
+          MR_ERROR("Loading Base Color texture - ", exp.error());
+        }
+      }
+
+      materials[i] = std::move(res);
+    });
+
+    return materials;
   }
 
   // Sequence:
@@ -234,11 +271,14 @@ inline namespace importer {
   //           - extract from texture URI into ImageData using stb
   //         - compose into TextureData
   Asset load(std::filesystem::path path) {
-    Asset asset;
+    fastgltf::Asset asset = *ASSERT_VAL(getAssetFromPath(path));
 
-    asset.meshes = getMeshesFromGLTF(path);
+    importer::Asset res;
 
-    return asset;
+    res.meshes = getMeshesFromAsset(asset);
+    res.materials = getMaterialsFromAsset(asset);
+
+    return res;
   }
   }
 }
