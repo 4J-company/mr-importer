@@ -35,7 +35,7 @@ inline namespace importer {
 
     auto attr = primitive.findAttribute(name);
     if (attr == primitive.attributes.cend()) {
-      MR_ERROR("primitive didn't contain {} attribute", name);
+      MR_WARNING("primitive didn't contain {} attribute", name);
       return std::nullopt;
     }
     size_t acessor_id = attr->accessorIndex;
@@ -269,6 +269,10 @@ inline namespace importer {
   //           - extract sampler data into SamplerData
   //           - extract from texture URI into ImageData using stb
   //         - compose into TextureData
+  /**
+   * Load a source asset (currently glTF) and convert it into runtime \ref Asset.
+   * Returns std::nullopt on parse or IO errors; logs details via MR_ logging.
+   */
   std::optional<Asset> load(std::filesystem::path path) {
     std::optional<fastgltf::Asset> asset = get_asset_from_path(path);
     if (!asset) {

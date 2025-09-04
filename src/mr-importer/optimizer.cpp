@@ -80,8 +80,15 @@ inline namespace importer {
     return {result_indices, result_shadow_indices};
   }
 
+  /**
+   * Optimize mesh topology and build multiple LODs suitable for real-time rendering.
+   */
   Mesh optimize(Mesh mesh) {
     if (mesh.attributes.empty()) {
+      MR_WARNING(
+          "Mesh doesn't contain attributes but they are being taken into account by `optimize` function."
+          "Consider adding attribute-less path in optimize"
+          );
       mesh.attributes.resize(mesh.positions.size());
     }
 

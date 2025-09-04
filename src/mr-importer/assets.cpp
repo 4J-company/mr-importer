@@ -4,6 +4,10 @@
 
 namespace mr {
 inline namespace importer {
+    /**
+     * Construct an \ref Asset by importing from a file path.
+     * On failure, logs an error and leaves the instance default-initialized.
+     */
     Asset::Asset(const std::filesystem::path &path) {
       auto imported = import(path);
       if (!imported) {
@@ -14,6 +18,10 @@ inline namespace importer {
       *this = std::move(imported.value());
     }
 
+    /**
+     * Construct a \ref Shader by compiling a shader file.
+     * On failure, logs an error and leaves the instance default-initialized.
+     */
     Shader::Shader(const std::filesystem::path &path) {
       auto compiled = compile(path);
       if (!compiled) {

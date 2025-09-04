@@ -12,7 +12,11 @@ static std::expected<Slang::ComPtr<slang::IBlob>, Slang::ComPtr<slang::IBlob>> g
 
 namespace mr {
 inline namespace importer {
-  // Should be thread-safe
+  /**
+   * Compile a shader module located at \p path into a \ref Shader.
+   * On any error during compilation, composition or linking, logs diagnostics
+   * and returns std::nullopt.
+   */
   std::optional<Shader> compile(const std::filesystem::path &path) {
     Slang::ComPtr<slang::ISession> session = get_or_create_session();
 
