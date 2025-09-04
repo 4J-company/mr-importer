@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * \file importer.hpp
+ * \brief High-level import facade that wires loader and optimizer.
+ */
+
 #include "def.hpp"
 #include "assets.hpp"
 #include "compiler.hpp"
@@ -9,9 +14,17 @@
 
 namespace mr {
 inline namespace importer {
-  inline std::optional<Asset> import(const std::filesystem::path& path, uint32_t options = Options::All)
+  /**
+   * \brief High-level import entry point.
+   *
+   * Loads an asset from disk, optionally optimizes meshes, and returns the result.
+   * \param path Path to a source asset (e.g. glTF file).
+   * \param options Import behavior flags, see \ref Options.
+   * \return Imported \ref Model or std::nullopt if loading failed.
+   */
+  inline std::optional<Model> import(const std::filesystem::path& path, uint32_t options = Options::All)
   {
-    std::optional<Asset> asset = load(path);
+    std::optional<Model> asset = load(path);
 
     if (!asset) {
       return std::nullopt;

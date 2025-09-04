@@ -1,0 +1,70 @@
+# Doxygen configuration for mr-importer
+
+# Project
+PROJECT_NAME           = "mr-importer"
+PROJECT_BRIEF          = "Opinionated asset importer with glTF loading and mesh optimization"
+PROJECT_NUMBER         =
+OUTPUT_DIRECTORY       = docs
+CREATE_SUBDIRS         = NO
+
+# Build
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+GENERATE_MAN           = NO
+GENERATE_RTF           = NO
+QUIET                  = NO
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+
+# Input
+INPUT                  = \
+  README.md            \
+  include              \
+  src
+FILE_PATTERNS          = *.hpp *.h *.cpp *.md
+RECURSIVE              = YES
+EXCLUDE                =
+EXCLUDE_PATTERNS       = */bin/* */build/* */.git/*
+
+# Parsing
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+EXTRACT_LOCAL_CLASSES  = YES
+JAVADOC_AUTOBRIEF      = YES
+MULTILINE_CPP_IS_BRIEF = YES
+INLINE_INHERITED_MEMB  = NO
+
+# Source browser
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = NO
+REFERENCES_RELATION    = NO
+VERBATIM_HEADERS       = YES
+
+# Diagrams
+HAVE_DOT               = YES
+DOT_MULTI_TARGETS      = YES
+CLASS_DIAGRAMS         = YES
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+
+# HTML
+HTML_OUTPUT            = html
+HTML_COLORSTYLE_HUE    = 210
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        =
+HTML_EXTRA_STYLESHEET  = docs/assets/doxygen-dark.css
+
+# Preprocessor
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+EXPAND_ONLY_PREDEF     = NO
+PREDEFINED             =

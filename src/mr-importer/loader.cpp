@@ -1,9 +1,20 @@
+/**
+ * \file loader.cpp
+ * \brief glTF loading and conversion into runtime asset structures.
+ */
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
 
 namespace mr {
 inline namespace importer {
+  /**
+   * Parse a glTF file into a fastgltf::Asset.
+   *
+   * On IO or parse error, logs an error with the fastgltf code and returns
+   * std::nullopt. Uses LoadExternalBuffers/Images to resolve external data.
+   */
   static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &path) {
     using namespace fastgltf;
 
@@ -26,6 +37,12 @@ inline namespace importer {
     return std::move(asset);
   }
 
+  /**
+   * Locate an accessor by attribute name on a primitive and validate its type.
+   *
+   * Expects Vec3 Float for POSITION/NORMAL. Logs warnings when missing or of
+   * unexpected type, and returns std::nullopt in that case.
+   */
   static std::optional<std::reference_wrapper<const fastgltf::Accessor>> get_accessor_by_name(
     const fastgltf::Asset &asset,
     const fastgltf::Primitive &primitive,
@@ -35,7 +52,7 @@ inline namespace importer {
 
     auto attr = primitive.findAttribute(name);
     if (attr == primitive.attributes.cend()) {
-      MR_ERROR("primitive didn't contain {} attribute", name);
+      MR_WARNING("primitive didn't contain {} attribute", name);
       return std::nullopt;
     }
     size_t acessor_id = attr->accessorIndex;
@@ -56,6 +73,13 @@ inline namespace importer {
     return std::ref(accessor);
   }
 
+  /**
+   * Convert a glTF primitive into an internal Mesh.
+   *
+   * Populates positions, normals (if present), primary LOD indices, and
+   * leaves attributes partially defaulted if normals are missing.
+   * Asserts that indices accessor exists.
+   */
   static std::optional<Mesh> get_mesh_from_primitive(const fastgltf::Asset &asset, const fastgltf::Primitive &primitive) {
     using namespace fastgltf;
 
@@ -89,6 +113,12 @@ inline namespace importer {
     return mesh;
   }
 
+  /**
+   * Extract meshes from the fastgltf asset and attach per-mesh transforms.
+   *
+   * Iterates scene nodes to gather transforms, then converts all primitives
+   * into Mesh objects, preserving names.
+   */
   static std::vector<Mesh> get_meshes_from_asset(fastgltf::Asset& asset) {
     using namespace fastgltf;
 
@@ -120,6 +150,12 @@ inline namespace importer {
     return result;
   }
 
+  /**
+   * Decode a glTF image into linear RGBA float pixels using stb_image.
+   *
+   * Supports URI, embedded vector, and buffer view sources. Returns an
+   * ImageData with owned memory; logs warnings for unexpected sources.
+   */
   static std::optional<ImageData> get_image_from_gltf(const fastgltf::Asset &asset, const fastgltf::Image &image) {
     ImageData new_image {};
 
@@ -171,6 +207,12 @@ inline namespace importer {
     return new_image;
   }
 
+  /**
+   * Create a TextureData from a glTF TextureInfo, decoding its image.
+   *
+   * Returns TextureData on success or an explanatory string_view on failure
+   * (e.g., unsupported formats). Does not throw.
+   */
   static std::expected<TextureData, std::string_view> get_texture_from_gltf(fastgltf::Asset &asset, const fastgltf::TextureInfo &texinfo) {
     fastgltf::Texture &tex = asset.textures[texinfo.textureIndex];
 
@@ -186,14 +228,22 @@ inline namespace importer {
     return TextureData { std::move(img_data), SamplerData {} };
   }
 
+  /** Convert normalized vec4 to Color. */
   static Color color_from_nvec4(fastgltf::math::nvec4 v) {
     return { v.x(), v.y(), v.z(), v.w() };
   }
+  /** Convert normalized vec3 to Color with alpha = 1. */
   static Color color_from_nvec3(fastgltf::math::nvec3 v) {
     return { v.x(), v.y(), v.z(), 1.f };
   }
 
 
+  /**
+   * Build MaterialData array from glTF materials.
+   *
+   * Transfers PBR factors and attempts to load referenced textures; logs
+   * errors/warnings for failed texture loads and continues gracefully.
+   */
   static std::vector<MaterialData> get_materials_from_asset(fastgltf::Asset &asset) {
     std::vector<MaterialData> materials;
     materials.resize(asset.materials.size());
@@ -269,13 +319,17 @@ inline namespace importer {
   //           - extract sampler data into SamplerData
   //           - extract from texture URI into ImageData using stb
   //         - compose into TextureData
-  std::optional<Asset> load(std::filesystem::path path) {
+  /**
+   * Load a source asset (currently glTF) and convert it into runtime \ref Model.
+   * Returns std::nullopt on parse or IO errors; logs details via MR_ logging.
+   */
+  std::optional<Model> load(std::filesystem::path path) {
     std::optional<fastgltf::Asset> asset = get_asset_from_path(path);
     if (!asset) {
       return std::nullopt;
     }
 
-    importer::Asset res;
+    importer::Model res;
 
     res.meshes = get_meshes_from_asset(asset.value());
     res.materials = get_materials_from_asset(asset.value());

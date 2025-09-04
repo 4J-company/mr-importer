@@ -12,6 +12,6 @@ int main(int argc, char **argv) {
     exit(47);
   }
 
-  auto handle = mr::Manager<mr::Asset>::get().create("id", std::filesystem::path(argv[1]));
+  auto handle = mr::Manager<mr::Model>::get().create("id", std::filesystem::path(argv[1]));
   render(handle->meshes);
 }

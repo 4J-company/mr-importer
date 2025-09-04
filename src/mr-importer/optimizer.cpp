@@ -1,3 +1,8 @@
+/**
+ * \file optimizer.cpp
+ * \brief Mesh optimization and multi-LOD generation implementation.
+ */
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
@@ -80,8 +85,15 @@ inline namespace importer {
     return {result_indices, result_shadow_indices};
   }
 
+  /**
+   * Optimize mesh topology and build multiple LODs suitable for real-time rendering.
+   */
   Mesh optimize(Mesh mesh) {
     if (mesh.attributes.empty()) {
+      MR_WARNING(
+          "Mesh has no attributes, but they are considered by `optimize` function."
+          " Consider adding attribute-less path in optimize"
+          );
       mesh.attributes.resize(mesh.positions.size());
     }
 
