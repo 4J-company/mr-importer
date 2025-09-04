@@ -4,7 +4,7 @@ from conan.tools.build import check_min_cppstd
 
 class mr_importerRecipe(ConanFile):
     name = "mr-importer"
-    version = "1.0"
+    version = "1.0.0"
     package_type = "library"
 
     license = "MIT"
@@ -17,7 +17,7 @@ class mr_importerRecipe(ConanFile):
 
     options = {"shared": [True, False]}
     default_options = {"shared": False}
-
+    
     exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake", "tests/main.cpp", "examples/*"
 
     def requirements(self):
@@ -29,6 +29,8 @@ class mr_importerRecipe(ConanFile):
         self.requires("efsw/1.4.1")
         self.requires("meshoptimizer/0.23")
         self.requires("fastgltf/0.8.0")
+
+        self.requires("glm/1.0.1")
 
         self.requires("slang/2025.10.4")
 
@@ -62,11 +64,12 @@ class mr_importerRecipe(ConanFile):
         cmake_layout(self)
 
     def generate(self):
-        deps = CMakeDeps(self)
-        deps.generate()
         tc = CMakeToolchain(self)
         tc.generator = "Ninja"
         tc.generate()
+
+        deps = CMakeDeps(self)
+        deps.generate()
 
     def build(self):
         cmake = CMake(self)

@@ -1,10 +1,10 @@
 #include "mr-importer/assets.hpp"
 #include <polyscope/render/materials.h>
 
+#include <glm/glm.hpp>
+
 #include "polyscope/polyscope.h"
 #include "polyscope/surface_mesh.h"
-
-#include <glm/glm.hpp>
 
 #include <cstdint>
 #include <vector>
