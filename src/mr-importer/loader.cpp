@@ -1,7 +1,6 @@
-#include "mr-importer/def.hpp"
+#include "mr-importer/importer.hpp"
 
-#include "mr-importer/loader.hpp"
-#include "mr-importer/assets.hpp"
+#include "pch.hpp"
 
 namespace mr {
 inline namespace importer {
@@ -16,7 +15,7 @@ inline namespace importer {
     }
 
     Parser parser;
-    auto options = Options::LoadExternalBuffers | Options::LoadExternalImages;
+    auto options = fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages;
     auto [error, asset] = parser.loadGltf(data, path.parent_path(), options);
     if (error != Error::None) {
       MR_ERROR("Failed to parse GLTF file");
@@ -191,7 +190,7 @@ inline namespace importer {
     return { v.x(), v.y(), v.z(), v.w() };
   }
   static Color color_from_nvec3(fastgltf::math::nvec3 v) {
-    return { v.x(), v.y(), v.z(), 1 };
+    return { v.x(), v.y(), v.z(), 1.f };
   }
 
 

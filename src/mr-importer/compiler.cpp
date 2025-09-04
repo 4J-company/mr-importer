@@ -1,8 +1,6 @@
-#include <expected>
-#include <slang-com-ptr.h>
-#include <slang.h>
+#include "mr-importer/importer.hpp"
 
-#include "mr-importer/compiler.hpp"
+#include "pch.hpp"
 
 // forward declarations (implementations at the end)
 static Slang::ComPtr<slang::ISession> get_or_create_session();
@@ -24,8 +22,8 @@ inline namespace importer {
       module = std::move(res.value());
     }
     else {
-      fmt::println("[ERROR] Failed to compile {}", path.string());
-      fmt::println("\t\t{}", res.error()->getBufferPointer());
+      MR_ERROR(" Failed to compile {}", path.string());
+      MR_ERROR("\t\t{}", res.error()->getBufferPointer());
       return std::nullopt;
     }
 
@@ -34,7 +32,7 @@ inline namespace importer {
       entry_point = std::move(res.value());
     }
     else {
-      fmt::println("[ERROR] Failed to locate entry point for shader {}", path.string());
+      MR_ERROR(" Failed to locate entry point for shader {}", path.string());
       return std::nullopt;
     }
 
@@ -43,8 +41,8 @@ inline namespace importer {
       composed = std::move(res.value());
     }
     else {
-      fmt::println("[ERROR] Failed to compose a program {}", path.string());
-      fmt::println("\t\t{}", res.error()->getBufferPointer());
+      MR_ERROR(" Failed to compose a program {}", path.string());
+      MR_ERROR("\t\t{}", res.error()->getBufferPointer());
       return std::nullopt;
     }
 
@@ -53,8 +51,8 @@ inline namespace importer {
       linked = std::move(res.value());
     }
     else {
-      fmt::println("[ERROR] Failed to link a program {}", path.string());
-      fmt::println("\t\t{}", res.error()->getBufferPointer());
+      MR_ERROR(" Failed to link a program {}", path.string());
+      MR_ERROR("\t\t{}", res.error()->getBufferPointer());
       return std::nullopt;
     }
 
@@ -63,8 +61,8 @@ inline namespace importer {
       shader.spirv = std::move(res.value());
     }
     else {
-      fmt::println("[ERROR] Failed to get target code from a program {}", path.string());
-      fmt::println("\t\t{}", res.error()->getBufferPointer());
+      MR_ERROR(" Failed to get target code from a program {}", path.string());
+      MR_ERROR("\t\t{}", res.error()->getBufferPointer());
       return std::nullopt;
     }
 
