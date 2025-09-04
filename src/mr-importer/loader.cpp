@@ -110,6 +110,13 @@ inline namespace importer {
     mesh.lods[0].indices.resize(idxAccessor.count);
     fastgltf::copyFromAccessor<std::uint32_t>(asset, idxAccessor, mesh.lods[0].indices.data());
 
+    if (primitive.materialIndex) {
+      mesh.material = primitive.materialIndex.value();
+    }
+    else {
+      MR_ERROR("Mesh has no material specified");
+    }
+
     return mesh;
   }
 
@@ -250,57 +257,55 @@ inline namespace importer {
 
     auto io = std::ranges::iota_view {0uz, asset.materials.size()};
     std::for_each(std::execution::seq, io.begin(), io.end(), [&asset, &materials] (size_t i) {
-      fastgltf::Material &material = asset.materials[i];
-      MaterialData res;
+      fastgltf::Material &src = asset.materials[i];
+      MaterialData &dst = materials[i];
       
-      res.base_color_factor = color_from_nvec4(material.pbrData.baseColorFactor);
-      res.roughness_factor = material.pbrData.roughnessFactor;
-      res.metallic_factor = material.pbrData.metallicFactor;
-      res.emissive_color = color_from_nvec3(material.emissiveFactor);
-      res.normal_map_intensity = 0;
-      res.emissive_strength = material.emissiveStrength;
+      dst.base_color_factor = color_from_nvec4(src.pbrData.baseColorFactor);
+      dst.roughness_factor = src.pbrData.roughnessFactor;
+      dst.metallic_factor = src.pbrData.metallicFactor;
+      dst.emissive_color = color_from_nvec3(src.emissiveFactor);
+      dst.normal_map_intensity = 0;
+      dst.emissive_strength = src.emissiveStrength;
 
-      if (material.pbrData.baseColorTexture.has_value()) {
-        auto exp = get_texture_from_gltf(asset, material.pbrData.baseColorTexture.value());
+      if (src.pbrData.baseColorTexture.has_value()) {
+        auto exp = get_texture_from_gltf(asset, src.pbrData.baseColorTexture.value());
         if (exp.has_value()) {
-          res.textures.emplace_back(std::move(exp.value()));
+          dst.textures.emplace_back(std::move(exp.value()));
         }
         else {
           MR_ERROR("Loading Base Color texture - ", exp.error());
         }
       }
 
-      if (material.normalTexture.has_value()) {
-        auto exp = get_texture_from_gltf(asset, material.normalTexture.value());
+      if (src.normalTexture.has_value()) {
+        auto exp = get_texture_from_gltf(asset, src.normalTexture.value());
         if (exp.has_value()) {
-          res.textures.emplace_back(std::move(exp.value()));
+          dst.textures.emplace_back(std::move(exp.value()));
         }
         else {
           MR_WARNING("Loading Base Color texture - ", exp.error());
         }
       }
 
-      if (material.pbrData.metallicRoughnessTexture.has_value()) {
-        auto exp = get_texture_from_gltf(asset, material.pbrData.metallicRoughnessTexture.value());
+      if (src.pbrData.metallicRoughnessTexture.has_value()) {
+        auto exp = get_texture_from_gltf(asset, src.pbrData.metallicRoughnessTexture.value());
         if (exp.has_value()) {
-          res.textures.emplace_back(std::move(exp.value()));
+          dst.textures.emplace_back(std::move(exp.value()));
         }
         else {
           MR_ERROR("Loading Base Color texture - ", exp.error());
         }
       }
 
-      if (material.emissiveTexture.has_value()) {
-        auto exp = get_texture_from_gltf(asset, material.emissiveTexture.value());
+      if (src.emissiveTexture.has_value()) {
+        auto exp = get_texture_from_gltf(asset, src.emissiveTexture.value());
         if (exp.has_value()) {
-          res.textures.emplace_back(std::move(exp.value()));
+          dst.textures.emplace_back(std::move(exp.value()));
         }
         else {
           MR_ERROR("Loading Base Color texture - ", exp.error());
         }
       }
-
-      materials[i] = std::move(res);
     });
 
     return materials;

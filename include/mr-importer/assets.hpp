@@ -57,6 +57,7 @@ inline namespace importer {
     std::vector<LOD> lods;
     std::vector<Transform> transforms;
     std::string name;
+    std::size_t material;
   };
   
   // material-related data
