@@ -10,14 +10,15 @@ include(cmake/deps.cmake)
 add_library(mr-importer-lib
   include/mr-importer/def.hpp
   include/mr-importer/assets.hpp
-  include/mr-importer/assets.cpp
   include/mr-importer/importer.hpp
   include/mr-importer/loader.hpp
-  include/mr-importer/loader.cpp
   include/mr-importer/optimizer.hpp
-  include/mr-importer/optimizer.cpp
   include/mr-importer/compiler.hpp
-  include/mr-importer/compiler.cpp
+
+  src/mr-importer/assets.cpp
+  src/mr-importer/loader.cpp
+  src/mr-importer/optimizer.cpp
+  src/mr-importer/compiler.cpp
 )
 target_compile_features(mr-importer-lib PUBLIC cxx_std_23)
 target_link_libraries(mr-importer-lib PUBLIC ${MR_IMPORTER_DEPS})

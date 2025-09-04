@@ -1,7 +1,6 @@
-#include "def.hpp"
+#include "mr-importer/importer.hpp"
 
-#include "assets.hpp"
-#include "optimizer.hpp"
+#include "pch.hpp"
 
 namespace mr {
 inline namespace importer {
