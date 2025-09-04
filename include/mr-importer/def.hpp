@@ -1,12 +1,10 @@
 #pragma once
 
-#include <array>
-#include <cmath>
-#include <execution>
-
 #include <filesystem>
-
-#include <functional>
+#include <string>
+#include <vector>
+#include <memory>
+#include <cstdint>
 
 #include <mr-math/math.hpp>
 
@@ -18,18 +16,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <memory>
-
 #include <slang-com-helper.h>
 #include <slang-com-ptr.h>
 #include <slang.h>
-
-#include <span>
-
-#include <string>
-#include <tuple>
-#include <utility>
-#include <vector>
 
 namespace mr {
 inline namespace importer {
