@@ -5,11 +5,23 @@
 namespace mr {
 inline namespace importer {
     Asset::Asset(const std::filesystem::path &path) {
-      *this = import(path);
+      auto imported = import(path);
+      if (!imported) {
+        MR_ERROR("Asset import failed: {}", path.c_str());
+        return;
+      }
+
+      *this = std::move(imported.value());
     }
 
     Shader::Shader(const std::filesystem::path &path) {
-      *this = compile(path).value();
+      auto compiled = compile(path);
+      if (!compiled) {
+        MR_ERROR("Shader compilation failed: {}", path.c_str());
+        return;
+      }
+
+      *this = std::move(compiled.value());
     }
 }
 }

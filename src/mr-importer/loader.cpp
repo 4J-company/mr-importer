@@ -269,13 +269,16 @@ inline namespace importer {
   //           - extract sampler data into SamplerData
   //           - extract from texture URI into ImageData using stb
   //         - compose into TextureData
-  Asset load(std::filesystem::path path) {
-    fastgltf::Asset asset = *ASSERT_VAL(get_asset_from_path(path));
+  std::optional<Asset> load(std::filesystem::path path) {
+    std::optional<fastgltf::Asset> asset = get_asset_from_path(path);
+    if (!asset) {
+      return std::nullopt;
+    }
 
     importer::Asset res;
 
-    res.meshes = get_meshes_from_asset(asset);
-    res.materials = get_materials_from_asset(asset);
+    res.meshes = get_meshes_from_asset(asset.value());
+    res.materials = get_materials_from_asset(asset.value());
 
     return res;
   }
