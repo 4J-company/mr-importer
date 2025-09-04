@@ -4,7 +4,7 @@ from conan.tools.build import check_min_cppstd
 
 class mr_importerRecipe(ConanFile):
     name = "mr-importer"
-    version = "1.0.0"
+    version = "1.0.3"
     package_type = "library"
 
     license = "MIT"
@@ -75,11 +75,4 @@ class mr_importerRecipe(ConanFile):
         cmake = CMake(self)
         cmake.configure()
         cmake.build()
-
-    def package(self):
-        cmake = CMake(self)
-        cmake.install()
-
-    def package_info(self):
-        self.cpp_info.libs = ["mr-importer-lib"]
 

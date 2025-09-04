@@ -37,13 +37,18 @@ target_link_libraries(${MR_IMPORTER_LIB_NAME}
   PRIVATE
     ${MR_IMPORTER_PRIVATE_DEPS}
 )
-target_include_directories(${MR_IMPORTER_LIB_NAME} PUBLIC include)
+target_include_directories(${MR_IMPORTER_LIB_NAME} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_precompile_headers(${MR_IMPORTER_LIB_NAME}
   PUBLIC
-    include/mr-importer/def.hpp
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/mr-importer/def.hpp>
+    $<INSTALL_INTERFACE:include/mr-importer/def.hpp>
 
   PRIVATE
-    src/mr-importer/pch.hpp
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/mr-importer/pch.hpp>
+    $<INSTALL_INTERFACE:src/mr-importer/pch.hpp>
 )
 
 if (MR_IMPORTER_BUILD_TESTS)
@@ -69,25 +74,3 @@ if (MR_IMPORTER_BUILD_EXAMPLES)
   )
   target_link_libraries(mr-importer-shader-example PUBLIC mr-importer-lib)
 endif()
-
-# Install the library
-install(TARGETS ${MR_IMPORTER_LIB_NAME}
-    EXPORT mr-importer-targets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-    INCLUDES DESTINATION include
-)
-
-# Install public headers
-install(DIRECTORY include/
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.hpp"
-)
-
-# Install export configuration
-install(EXPORT mr-importer-targets
-    FILE mr-importer-config.cmake
-    NAMESPACE mr::
-    DESTINATION lib/cmake/mr-importer
-)
