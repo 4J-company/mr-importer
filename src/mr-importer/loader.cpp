@@ -320,16 +320,16 @@ inline namespace importer {
   //           - extract from texture URI into ImageData using stb
   //         - compose into TextureData
   /**
-   * Load a source asset (currently glTF) and convert it into runtime \ref Asset.
+   * Load a source asset (currently glTF) and convert it into runtime \ref Model.
    * Returns std::nullopt on parse or IO errors; logs details via MR_ logging.
    */
-  std::optional<Asset> load(std::filesystem::path path) {
+  std::optional<Model> load(std::filesystem::path path) {
     std::optional<fastgltf::Asset> asset = get_asset_from_path(path);
     if (!asset) {
       return std::nullopt;
     }
 
-    importer::Asset res;
+    importer::Model res;
 
     res.meshes = get_meshes_from_asset(asset.value());
     res.materials = get_materials_from_asset(asset.value());

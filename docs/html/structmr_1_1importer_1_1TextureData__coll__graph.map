@@ -1,7 +1,0 @@
-<map id="mr::importer::TextureData" name="mr::importer::TextureData">
-<area shape="rect" id="Node000001" title="Texture composed of image and sampler." alt="" coords="98,104,268,131"/>
-<area shape="rect" id="Node000002" href="$structmr_1_1importer_1_1ImageData.html" title="Raw image data stored as linear RGBA float pixels." alt="" coords="5,5,169,32"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="112,41,173,102,169,106,108,45"/>
-<area shape="rect" id="Node000003" href="$structmr_1_1importer_1_1SamplerData.html" title="Texture sampler settings placeholder." alt="" coords="193,5,368,32"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="259,45,197,106,194,102,255,41"/>
-</map>

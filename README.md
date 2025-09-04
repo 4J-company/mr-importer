@@ -16,8 +16,8 @@ High-level importer focused on pragmatic, real-time graphics needs. It loads glT
 Core public headers live under `include/mr-importer`:
 
 - `def.hpp`: Common forward declarations and external dependencies used by the API
-- `assets.hpp`: Core data structures (`Asset`, `Mesh`, `MaterialData`, `Shader`, etc.)
-- `loader.hpp`: `std::optional<Asset> load(std::filesystem::path)` — parse and convert source assets
+- `assets.hpp`: Core data structures (`Model`, `Mesh`, `MaterialData`, `Shader`, etc.)
+- `loader.hpp`: `std::optional<Model> load(std::filesystem::path)` — parse and convert source assets
 - `optimizer.hpp`: `Mesh optimize(Mesh)` — GPU-friendly topology and LOD generation
 - `compiler.hpp`: `std::optional<Shader> compile(const std::filesystem::path&)` — shader compilation
 - `options.hpp`: Import behavior flags

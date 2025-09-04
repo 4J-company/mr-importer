@@ -20,11 +20,11 @@ inline namespace importer {
    * Loads an asset from disk, optionally optimizes meshes, and returns the result.
    * \param path Path to a source asset (e.g. glTF file).
    * \param options Import behavior flags, see \ref Options.
-   * \return Imported \ref Asset or std::nullopt if loading failed.
+   * \return Imported \ref Model or std::nullopt if loading failed.
    */
-  inline std::optional<Asset> import(const std::filesystem::path& path, uint32_t options = Options::All)
+  inline std::optional<Model> import(const std::filesystem::path& path, uint32_t options = Options::All)
   {
-    std::optional<Asset> asset = load(path);
+    std::optional<Model> asset = load(path);
 
     if (!asset) {
       return std::nullopt;

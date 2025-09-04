@@ -130,13 +130,13 @@ inline namespace importer {
    *
    * Contains geometry and material data extracted from source files (e.g. glTF).
    */
-  struct Asset {
+  struct Model {
     std::vector<Mesh> meshes;
     std::vector<MaterialData> materials;
   
-    Asset() = default;
+    Model() = default;
     /** \brief Construct and import an asset from the given file path. */
-    Asset(const std::filesystem::path& path);
+    Model(const std::filesystem::path& path);
   };
 } // namespace importer
 } // namespace mr

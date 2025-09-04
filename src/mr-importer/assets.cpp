@@ -10,13 +10,13 @@
 namespace mr {
 inline namespace importer {
     /**
-     * Construct an \ref Asset by importing from a file path.
+     * Construct an \ref Model by importing from a file path.
      * On failure, logs an error and leaves the instance default-initialized.
      */
-    Asset::Asset(const std::filesystem::path &path) {
+    Model::Model(const std::filesystem::path &path) {
       auto imported = import(path);
       if (!imported) {
-        MR_ERROR("Asset import failed: {}", path.c_str());
+        MR_ERROR("Model import failed: {}", path.c_str());
         return;
       }
 
