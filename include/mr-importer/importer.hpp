@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * \file importer.hpp
+ * \brief High-level import facade that wires loader and optimizer.
+ */
+
 #include "def.hpp"
 #include "assets.hpp"
 #include "compiler.hpp"

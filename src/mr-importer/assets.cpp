@@ -1,3 +1,8 @@
+/**
+ * \file assets.cpp
+ * \brief Inline helpers and constructors for runtime asset structures.
+ */
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"

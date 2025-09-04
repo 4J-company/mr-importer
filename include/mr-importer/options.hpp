@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * \file options.hpp
+ * \brief Import configuration flags.
+ */
+
 #include <cstdint>
 
 namespace mr {

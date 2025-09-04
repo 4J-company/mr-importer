@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * \file optimizer.hpp
+ * \brief Public API for mesh optimization and LOD generation.
+ */
+
 #include "assets.hpp"
 
 namespace mr {

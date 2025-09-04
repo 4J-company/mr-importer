@@ -1,3 +1,8 @@
+/**
+ * \file compiler.cpp
+ * \brief Slang-based shader compilation pipeline implementation.
+ */
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
@@ -75,6 +80,13 @@ inline namespace importer {
 }
 }
 
+/**
+ * Create or reuse a thread-local Slang session configured for SPIR-V output.
+ *
+ * Returns a cached session on subsequent calls. Configures target, options,
+ * and search paths once per thread. Does not report errors; assumes creation
+ * succeeds and returns an empty session only if Slang fails unexpectedly.
+ */
 static Slang::ComPtr<slang::ISession> get_or_create_session() {
   static thread_local Slang::ComPtr<slang::ISession> session;
   if (session) {
@@ -115,6 +127,12 @@ static Slang::ComPtr<slang::ISession> get_or_create_session() {
   return session;
 }
 
+/**
+ * Load/compile a Slang module from the given path.
+ *
+ * On success returns a module; on failure returns an error blob containing
+ * compiler diagnostics via std::unexpected.
+ */
 static std::expected<Slang::ComPtr<slang::IModule>, Slang::ComPtr<slang::IBlob>> compile_module(slang::ISession* session, const std::filesystem::path &path) {
   Slang::ComPtr<slang::IModule> module;
   Slang::ComPtr<slang::IBlob> blob;
@@ -131,6 +149,11 @@ static std::expected<Slang::ComPtr<slang::IModule>, Slang::ComPtr<slang::IBlob>>
   return module;
 }
 
+/**
+ * Find the entry point named "main" in the given module.
+ *
+ * Returns the entry point if it exists, otherwise std::nullopt.
+ */
 static std::optional<Slang::ComPtr<slang::IEntryPoint>> locate_entry_point(slang::IModule *module) {
   Slang::ComPtr<slang::IEntryPoint> res;
   module->findEntryPointByName("main", res.writeRef());
@@ -140,6 +163,12 @@ static std::optional<Slang::ComPtr<slang::IEntryPoint>> locate_entry_point(slang
   return std::nullopt;
 }
 
+/**
+ * Compose the module and its entry point into a component for linking.
+ *
+ * On success returns the composed component; otherwise returns diagnostics
+ * blob via std::unexpected.
+ */
 static std::expected<Slang::ComPtr<slang::IComponentType>, Slang::ComPtr<slang::IBlob>> compose_components(slang::ISession *session, slang::IModule *module, slang::IEntryPoint *entry) {
   Slang::ComPtr<slang::IBlob> blob;
   Slang::ComPtr<slang::IComponentType> composed;
@@ -162,6 +191,12 @@ static std::expected<Slang::ComPtr<slang::IComponentType>, Slang::ComPtr<slang::
   return composed;
 }
 
+/**
+ * Link the composed component into a final program.
+ *
+ * On success returns the linked component; otherwise returns diagnostics
+ * blob via std::unexpected.
+ */
 static std::expected<Slang::ComPtr<slang::IComponentType>, Slang::ComPtr<slang::IBlob>> link_program(slang::IComponentType *composed) {
   Slang::ComPtr<slang::IBlob> blob;
   Slang::ComPtr<slang::IComponentType> linked;
@@ -178,6 +213,12 @@ static std::expected<Slang::ComPtr<slang::IComponentType>, Slang::ComPtr<slang::
   return linked;
 }
 
+/**
+ * Extract target code (SPIR-V) for entry point 0 from the linked program.
+ *
+ * On success returns a blob with compiled code; otherwise returns diagnostics
+ * blob via std::unexpected.
+ */
 static std::expected<Slang::ComPtr<slang::IBlob>, Slang::ComPtr<slang::IBlob>> get_target_code(slang::IComponentType *linked) {
   Slang::ComPtr<slang::IBlob> blob;
   Slang::ComPtr<slang::IBlob> code;

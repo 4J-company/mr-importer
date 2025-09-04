@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * \file loader.hpp
+ * \brief Public API to load and convert source assets (e.g., glTF).
+ */
+
 #include "assets.hpp"
 
 namespace mr {

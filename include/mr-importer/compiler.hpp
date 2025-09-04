@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * \file compiler.hpp
+ * \brief Public API for shader compilation.
+ */
+
 #include "def.hpp"
 #include "assets.hpp"
 

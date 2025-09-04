@@ -1,3 +1,8 @@
+/**
+ * \file optimizer.cpp
+ * \brief Mesh optimization and multi-LOD generation implementation.
+ */
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
@@ -86,8 +91,8 @@ inline namespace importer {
   Mesh optimize(Mesh mesh) {
     if (mesh.attributes.empty()) {
       MR_WARNING(
-          "Mesh doesn't contain attributes but they are being taken into account by `optimize` function."
-          "Consider adding attribute-less path in optimize"
+          "Mesh has no attributes, but they are considered by `optimize` function."
+          " Consider adding attribute-less path in optimize"
           );
       mesh.attributes.resize(mesh.positions.size());
     }
