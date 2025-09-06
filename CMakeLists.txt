@@ -31,12 +31,8 @@ add_library(${MR_IMPORTER_LIB_NAME}
     src/mr-importer/pch.hpp
 )
 target_compile_features(${MR_IMPORTER_LIB_NAME} PUBLIC cxx_std_23)
-target_link_libraries(${MR_IMPORTER_LIB_NAME}
-  PUBLIC
-    ${MR_IMPORTER_PUBLIC_DEPS}
-  PRIVATE
-    ${MR_IMPORTER_PRIVATE_DEPS}
-)
+target_link_libraries(${MR_IMPORTER_LIB_NAME} PUBLIC ${MR_IMPORTER_PUBLIC_DEPS})
+target_link_libraries(${MR_IMPORTER_LIB_NAME} PRIVATE ${MR_IMPORTER_PRIVATE_DEPS})
 target_include_directories(${MR_IMPORTER_LIB_NAME} PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>

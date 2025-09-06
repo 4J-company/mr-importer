@@ -26,6 +26,7 @@ find_package(meshoptimizer REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(stb REQUIRED)
 find_package(mr-utils REQUIRED)
+find_package(TBB REQUIRED)
 
 set(MR_IMPORTER_PRIVATE_DEPS
   meshoptimizer::meshoptimizer
@@ -34,9 +35,5 @@ set(MR_IMPORTER_PRIVATE_DEPS
   efsw::efsw
   stb::stb
   fmt::fmt
+  onetbb::onetbb
 )
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  find_package(TBB REQUIRED)
-  set(MR_IMPORTER_PRIVATE_DEPS ${MR_IMPORTER_PRIVATE_DEPS} onetbb::onetbb)
-endif()

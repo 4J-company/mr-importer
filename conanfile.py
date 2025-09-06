@@ -4,7 +4,7 @@ from conan.tools.build import check_min_cppstd
 
 class mr_importerRecipe(ConanFile):
     name = "mr-importer"
-    version = "1.0.3"
+    version = "1.0.5"
     package_type = "library"
 
     license = "MIT"
@@ -36,8 +36,7 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("stb/cci.20240531")
 
-        if self.settings.compiler in ("gcc", "clang"):
-            self.requires("onetbb/2022.2.0")
+        self.requires("onetbb/2022.2.0")
 
         self.requires("mr-math/1.1.3")
         self.requires("mr-utils/1.0.4")
@@ -76,3 +75,6 @@ class mr_importerRecipe(ConanFile):
         cmake.configure()
         cmake.build()
 
+    def package(self):
+        cmake = CMake(self)
+        cmake.install()
