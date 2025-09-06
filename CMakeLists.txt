@@ -74,3 +74,18 @@ if (MR_IMPORTER_BUILD_EXAMPLES)
   )
   target_link_libraries(mr-importer-shader-example PUBLIC mr-importer-lib)
 endif()
+
+install(TARGETS ${MR_IMPORTER_LIB_NAME}
+    EXPORT mr-importer-targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+)
+
+install(DIRECTORY include/ DESTINATION include)
+install(EXPORT mr-importer-targets
+    FILE mr-importer-config.cmake
+    NAMESPACE mr-importer::
+    DESTINATION lib/cmake/mr-importer
+)
