@@ -94,17 +94,30 @@ inline namespace importer {
     TextureType type;
     SamplerData sampler;
   };
+
   /** \brief Minimal physically-based material description. */
   struct MaterialData {
+    struct alignas(16) ConstantBlock {
+      Color base_color_factor;
+      Color emissive_color;
+      float emissive_strength;
+      float normal_map_intensity;
+
+      float roughness_factor;
+      float metallic_factor;
+    };
+
+    static inline constexpr size_t constants_bytesize = sizeof(ConstantBlock);
+
+    ConstantBlock constants;
     std::vector<TextureData> textures;
-  
-    Color base_color_factor;
-    Color emissive_color;
-    float emissive_strength;
-    float normal_map_intensity;
-  
-    float roughness_factor;
-    float metallic_factor;
+
+    constexpr std::span<const std::byte, constants_bytesize> constants_data() const noexcept {
+      return std::span<const std::byte, constants_bytesize> {
+        reinterpret_cast<const std::byte*>(&constants),
+        constants_bytesize
+      };
+    }
   };
   
   // TODO: animation-related data

@@ -263,12 +263,12 @@ inline namespace importer {
       fastgltf::Material &src = asset.materials[i];
       MaterialData       &dst = materials[i];
       
-      dst.base_color_factor = color_from_nvec4(src.pbrData.baseColorFactor);
-      dst.roughness_factor = src.pbrData.roughnessFactor;
-      dst.metallic_factor = src.pbrData.metallicFactor;
-      dst.emissive_color = color_from_nvec3(src.emissiveFactor);
-      dst.normal_map_intensity = 1;
-      dst.emissive_strength = src.emissiveStrength;
+      dst.constants.base_color_factor = color_from_nvec4(src.pbrData.baseColorFactor);
+      dst.constants.roughness_factor = src.pbrData.roughnessFactor;
+      dst.constants.metallic_factor = src.pbrData.metallicFactor;
+      dst.constants.emissive_color = color_from_nvec3(src.emissiveFactor);
+      dst.constants.normal_map_intensity = 1;
+      dst.constants.emissive_strength = src.emissiveStrength;
 
       if (src.pbrData.baseColorTexture.has_value()) {
         auto exp = get_texture_from_gltf(asset, TextureType::BaseColor, src.pbrData.baseColorTexture.value());
