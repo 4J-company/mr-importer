@@ -69,13 +69,29 @@ inline namespace importer {
     uint32_t height = 0;
     uint32_t depth = 1;
   };
+
   /** \brief Texture sampler settings placeholder. */
   struct SamplerData {
     // TODO: copy fastgltf::Sampler
   };
+
+  /** \brief Adds PBR meaning to the texture */
+  enum struct TextureType {
+    BaseColor,
+    RoughnessMetallic,
+    OcclusionRoughnessMetallic,
+    SpecularGlossiness,
+    EmissiveColor,
+    OcclusionMap,
+    NormalMap,
+
+    Max
+  };
+
   /** \brief Texture composed of image and sampler. */
   struct TextureData {
     ImageData image;
+    TextureType type;
     SamplerData sampler;
   };
   /** \brief Minimal physically-based material description. */

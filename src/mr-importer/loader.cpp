@@ -220,7 +220,11 @@ inline namespace importer {
    * Returns TextureData on success or an explanatory string_view on failure
    * (e.g., unsupported formats). Does not throw.
    */
-  static std::expected<TextureData, std::string_view> get_texture_from_gltf(fastgltf::Asset &asset, const fastgltf::TextureInfo &texinfo) {
+  static std::expected<TextureData, std::string_view> get_texture_from_gltf(
+      fastgltf::Asset &asset,
+      TextureType type,
+      const fastgltf::TextureInfo &texinfo)
+  {
     fastgltf::Texture &tex = asset.textures[texinfo.textureIndex];
 
     if (!tex.imageIndex.has_value()) {
@@ -232,7 +236,7 @@ inline namespace importer {
     fastgltf::Image &img = asset.images[img_idx];
     ImageData img_data = *ASSERT_VAL(get_image_from_gltf(asset, img));
 
-    return TextureData { std::move(img_data), SamplerData {} };
+    return TextureData { std::move(img_data), type, SamplerData {} };
   }
 
   /** Convert normalized vec4 to Color. */
@@ -243,7 +247,6 @@ inline namespace importer {
   static Color color_from_nvec3(fastgltf::math::nvec3 v) {
     return { v.x(), v.y(), v.z(), 1.f };
   }
-
 
   /**
    * Build MaterialData array from glTF materials.
@@ -258,17 +261,17 @@ inline namespace importer {
     auto io = std::ranges::iota_view {0uz, asset.materials.size()};
     std::for_each(std::execution::seq, io.begin(), io.end(), [&asset, &materials] (size_t i) {
       fastgltf::Material &src = asset.materials[i];
-      MaterialData &dst = materials[i];
+      MaterialData       &dst = materials[i];
       
       dst.base_color_factor = color_from_nvec4(src.pbrData.baseColorFactor);
       dst.roughness_factor = src.pbrData.roughnessFactor;
       dst.metallic_factor = src.pbrData.metallicFactor;
       dst.emissive_color = color_from_nvec3(src.emissiveFactor);
-      dst.normal_map_intensity = 0;
+      dst.normal_map_intensity = 1;
       dst.emissive_strength = src.emissiveStrength;
 
       if (src.pbrData.baseColorTexture.has_value()) {
-        auto exp = get_texture_from_gltf(asset, src.pbrData.baseColorTexture.value());
+        auto exp = get_texture_from_gltf(asset, TextureType::BaseColor, src.pbrData.baseColorTexture.value());
         if (exp.has_value()) {
           dst.textures.emplace_back(std::move(exp.value()));
         }
@@ -278,32 +281,61 @@ inline namespace importer {
       }
 
       if (src.normalTexture.has_value()) {
-        auto exp = get_texture_from_gltf(asset, src.normalTexture.value());
+        auto exp = get_texture_from_gltf(asset, TextureType::NormalMap, src.normalTexture.value());
         if (exp.has_value()) {
           dst.textures.emplace_back(std::move(exp.value()));
         }
         else {
-          MR_WARNING("Loading Base Color texture - ", exp.error());
+          MR_WARNING("Loading Normal Map texture - ", exp.error());
         }
       }
 
-      if (src.pbrData.metallicRoughnessTexture.has_value()) {
-        auto exp = get_texture_from_gltf(asset, src.pbrData.metallicRoughnessTexture.value());
+      if (src.packedOcclusionRoughnessMetallicTextures &&
+          src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture.has_value()) {
+        auto exp = get_texture_from_gltf(
+          asset,
+          TextureType::OcclusionRoughnessMetallic,
+          src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture.value()
+        );
         if (exp.has_value()) {
           dst.textures.emplace_back(std::move(exp.value()));
         }
         else {
-          MR_ERROR("Loading Base Color texture - ", exp.error());
+          MR_ERROR("Loading packed Occlusion Roughness Metallic texture - ", exp.error());
+        }
+      }
+      else if (src.pbrData.metallicRoughnessTexture.has_value()) {
+        auto exp = get_texture_from_gltf(
+          asset,
+          TextureType::RoughnessMetallic,
+          src.pbrData.metallicRoughnessTexture.value()
+        );
+
+        if (exp.has_value()) {
+          dst.textures.emplace_back(std::move(exp.value()));
+        }
+        else {
+          MR_ERROR("Loading Metallic Roughness texture - ", exp.error());
+        }
+
+        if (src.occlusionTexture.has_value()) {
+          auto exp = get_texture_from_gltf(asset, TextureType::OcclusionMap, src.occlusionTexture.value());
+          if (exp.has_value()) {
+            dst.textures.emplace_back(std::move(exp.value()));
+          }
+          else {
+            MR_ERROR("Loading Occlusion texture - ", exp.error());
+          }
         }
       }
 
       if (src.emissiveTexture.has_value()) {
-        auto exp = get_texture_from_gltf(asset, src.emissiveTexture.value());
+        auto exp = get_texture_from_gltf(asset, TextureType::EmissiveColor, src.emissiveTexture.value());
         if (exp.has_value()) {
           dst.textures.emplace_back(std::move(exp.value()));
         }
         else {
-          MR_ERROR("Loading Base Color texture - ", exp.error());
+          MR_ERROR("Loading Emissive texture - ", exp.error());
         }
       }
     });
