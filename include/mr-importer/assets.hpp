@@ -8,7 +8,7 @@ inline namespace importer {
    * \file assets.hpp
    * \brief Core data structures owned and returned by the importer.
    */
-  
+
   /** \brief 3D position in object space. */
   using Position = glm::vec3;
   /** \brief Index into vertex arrays. */
@@ -23,27 +23,28 @@ inline namespace importer {
     glm::vec3 normal;
     glm::vec3 tangent;
     glm::vec3 bitangent;
+    glm::vec2 texcoord;
   };
-  
+
   // mesh-related data
   /** \brief Contiguous array of vertex positions. */
   struct PositionArray : std::vector<Position> {
     using std::vector<Position>::vector;
     using std::vector<Position>::operator=;
   };
-  
+
   /** \brief Contiguous array of triangle indices. */
   struct IndexArray : std::vector<Index> {
     using std::vector<Index>::vector;
     using std::vector<Index>::operator=;
   };
-  
+
   /** \brief Contiguous array of per-vertex attributes. */
   struct VertexAttributesArray : std::vector<VertexAttributes> {
     using std::vector<VertexAttributes>::vector;
     using std::vector<VertexAttributes>::operator=;
   };
-  
+
   /** \brief Renderable mesh with positions, attributes and LODs. */
   struct Mesh {
     /** \brief One level-of-detail of mesh indices. */
@@ -51,7 +52,7 @@ inline namespace importer {
       IndexArray indices;
       IndexArray shadow_indices;
     };
-  
+
     PositionArray positions;
     VertexAttributesArray attributes;
     std::vector<LOD> lods;
@@ -59,7 +60,7 @@ inline namespace importer {
     std::string name;
     std::size_t material;
   };
-  
+
   // material-related data
   /** \brief Raw image data stored as linear RGBA float pixels. */
   struct ImageData {
@@ -76,14 +77,14 @@ inline namespace importer {
   };
 
   /** \brief Adds PBR meaning to the texture */
-  enum struct TextureType {
-    BaseColor,
-    RoughnessMetallic,
-    OcclusionRoughnessMetallic,
-    SpecularGlossiness,
-    EmissiveColor,
-    OcclusionMap,
-    NormalMap,
+  enum struct TextureType : uint32_t {
+    BaseColor                  = 0,
+    RoughnessMetallic          = 1,
+    OcclusionRoughnessMetallic = 2,
+    SpecularGlossiness         = 3,
+    EmissiveColor              = 4,
+    OcclusionMap               = 5,
+    NormalMap                  = 6,
 
     Max
   };
@@ -119,9 +120,9 @@ inline namespace importer {
       };
     }
   };
-  
+
   // TODO: animation-related data
-  
+
   /**
    * \brief Compiled shader artifact.
    *
@@ -129,15 +130,15 @@ inline namespace importer {
    */
   struct Shader {
     Slang::ComPtr<slang::IBlob> spirv;
-  
+
     Shader() = default;
     /** \brief Construct and compile the shader at the given path. */
     Shader(const std::filesystem::path& path);
   };
-  
+
   /** \brief Placeholder camera description. */
   struct Camera {};
-  
+
   /** \brief Directional light parameters. */
   struct DirectionalLight {
     Color color;
@@ -154,7 +155,7 @@ inline namespace importer {
     float intensity;
     float radius;
   };
-  
+
   /**
    * \brief Aggregate renderable asset produced by the importer.
    *
@@ -163,7 +164,7 @@ inline namespace importer {
   struct Model {
     std::vector<Mesh> meshes;
     std::vector<MaterialData> materials;
-  
+
     Model() = default;
     /** \brief Construct and import an asset from the given file path. */
     Model(const std::filesystem::path& path);

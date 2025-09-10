@@ -108,6 +108,15 @@ inline namespace importer {
       });
     }
 
+    // Process TEXCOORD attribute
+    std::optional<std::reference_wrapper<const Accessor>> texcoords = get_accessor_by_name(asset, primitive, "TEXCOORD");
+    if (texcoords.has_value()) {
+      mesh.attributes.resize(texcoords.value().get().count);
+      fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, texcoords.value(), [&](glm::vec2 v, int index) {
+        mesh.attributes[index].texcoord = v;
+      });
+    }
+
     // Process indices
     assert(primitive.indicesAccessor.has_value());
     mesh.lods.resize(1);
