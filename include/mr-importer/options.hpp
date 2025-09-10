@@ -14,7 +14,7 @@ inline namespace importer {
     /** \brief Run mesh optimization passes and generate LODs. */
     OptimizeMeshes = 1 << 0,
     /** \brief Enable all available import behaviors. */
-    All = 1 << 1,
+    All = ~0u,
   };
 } // namespace importer
 } // namespace mr

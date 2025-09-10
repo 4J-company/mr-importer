@@ -4,7 +4,7 @@ from conan.tools.build import check_min_cppstd
 
 class mr_importerRecipe(ConanFile):
     name = "mr-importer"
-    version = "1.0.6"
+    version = "1.1.1"
     package_type = "library"
 
     license = "MIT"
@@ -17,7 +17,7 @@ class mr_importerRecipe(ConanFile):
 
     options = {"shared": [True, False]}
     default_options = {"shared": False}
-    
+
     exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake", "tests/main.cpp", "examples/*"
 
     def requirements(self):

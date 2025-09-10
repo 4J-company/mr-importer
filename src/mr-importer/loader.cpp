@@ -3,6 +3,11 @@
  * \brief glTF loading and conversion into runtime asset structures.
  */
 
+#define STBI_FAILURE_USERMSG
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
@@ -170,10 +175,10 @@ inline namespace importer {
 
     std::visit(
       fastgltf::visitor {
-        [](auto& arg) {},
-        [&](fastgltf::sources::URI& filePath) {
-          assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-          assert(filePath.uri.isLocalPath());   // We're only capable of loading local files.
+        [](auto& arg) { ASSERT(false, "Unsupported image source in a GLTF file", arg); },
+        [&](const fastgltf::sources::URI& filePath) {
+          ASSERT(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
+          ASSERT(filePath.uri.isLocalPath());   // We're only capable of loading local files.
 
           const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());
 
@@ -182,7 +187,15 @@ inline namespace importer {
           new_image.height = height;
           new_image.depth = 1;
         },
-        [&](fastgltf::sources::Vector& vector) {
+        [&](const fastgltf::sources::Array& array) {
+          new_image.pixels.reset((Color*)stbi_loadf_from_memory((uint8_t*)array.bytes.data(),
+                                 static_cast<int>(array.bytes.size()),
+                                 &width, &height, &nrChannels, 4));
+          new_image.width = width;
+          new_image.height = height;
+          new_image.depth = 1;
+        },
+        [&](const fastgltf::sources::Vector& vector) {
           new_image.pixels.reset((Color*)stbi_loadf_from_memory((uint8_t*)vector.bytes.data(),
                                  static_cast<int>(vector.bytes.size()),
                                  &width, &height, &nrChannels, 4));
@@ -190,14 +203,14 @@ inline namespace importer {
           new_image.height = height;
           new_image.depth = 1;
         },
-        [&](fastgltf::sources::BufferView& view) {
+        [&](const fastgltf::sources::BufferView& view) {
           auto& bufferView = asset.bufferViews[view.bufferViewIndex];
           auto& buffer = asset.buffers[bufferView.bufferIndex];
 
           std::visit(fastgltf::visitor { // We only care about VectorWithMime here, because we
                                          // specify LoadExternalBuffers, meaning all buffers
                                          // are already loaded into a vector.
-            [](auto& arg) { MR_WARNING("Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)"); },
+            [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)"); },
             [&](fastgltf::sources::Vector& vector) {
               new_image.pixels.reset((Color*)stbi_loadf_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
                                                         static_cast<int>(bufferView.byteLength),
@@ -210,6 +223,8 @@ inline namespace importer {
         },
       },
       image.data);
+
+    ASSERT(new_image.pixels.get() != nullptr, "Unexpected error reading image data. Needs investigation");
 
     return new_image;
   }
@@ -262,7 +277,7 @@ inline namespace importer {
     std::for_each(std::execution::seq, io.begin(), io.end(), [&asset, &materials] (size_t i) {
       fastgltf::Material &src = asset.materials[i];
       MaterialData       &dst = materials[i];
-      
+
       dst.constants.base_color_factor = color_from_nvec4(src.pbrData.baseColorFactor);
       dst.constants.roughness_factor = src.pbrData.roughnessFactor;
       dst.constants.metallic_factor = src.pbrData.metallicFactor;

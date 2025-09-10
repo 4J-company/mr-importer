@@ -29,13 +29,13 @@ inline namespace importer {
     if (!asset) {
       return std::nullopt;
     }
-  
+
     if (options & Options::OptimizeMeshes) {
       for (Mesh& mesh : asset.value().meshes) {
         mesh = mr::optimize(std::move(mesh));
       }
     }
-  
+
     return asset;
   }
 } // namespace importer
