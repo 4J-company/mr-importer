@@ -66,10 +66,6 @@ inline namespace importer {
       return std::nullopt;
     }
     const Accessor& accessor = asset.accessors[acessor_id];
-    if (accessor.type != AccessorType::Vec3 || accessor.componentType != ComponentType::Float) {
-      MR_ERROR("primitive's itions were in wrong format (not Vec3f)");
-      return std::nullopt;
-    }
     if (!accessor.bufferViewIndex.has_value()) {
       MR_ERROR("primitive didn't contain buffer view");
       return std::nullopt;
@@ -108,8 +104,8 @@ inline namespace importer {
       });
     }
 
-    // Process TEXCOORD attribute
-    std::optional<std::reference_wrapper<const Accessor>> texcoords = get_accessor_by_name(asset, primitive, "TEXCOORD");
+    // Process TEXCOORD_0 attribute
+    std::optional<std::reference_wrapper<const Accessor>> texcoords = get_accessor_by_name(asset, primitive, "TEXCOORD_0");
     if (texcoords.has_value()) {
       mesh.attributes.resize(texcoords.value().get().count);
       fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, texcoords.value(), [&](glm::vec2 v, int index) {
@@ -171,6 +167,24 @@ inline namespace importer {
     return result;
   }
 
+  float * realign_3component_image(float *image_pixels, int width, int height) {
+    size_t image_byte_size = width * height * 4;
+    float *aligned_image_pixels = new (std::nothrow) float[image_byte_size];
+    ASSERT(aligned_image_pixels != nullptr, "Failed to realign image due to lack of memory", image_byte_size);
+
+    for (int i = 0; i < width * height; i++) {
+      aligned_image_pixels[i * 4 + 0] = image_pixels[i * 3 + 0];
+      aligned_image_pixels[i * 4 + 1] = image_pixels[i * 3 + 1];
+      aligned_image_pixels[i * 4 + 2] = image_pixels[i * 3 + 2];
+      aligned_image_pixels[i * 4 + 3] = 0;
+    }
+
+    std::swap(image_pixels, aligned_image_pixels);
+    delete[] aligned_image_pixels;
+
+    return image_pixels;
+  }
+
   /**
    * Decode a glTF image into linear RGBA float pixels using stb_image.
    *
@@ -191,23 +205,48 @@ inline namespace importer {
 
           const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());
 
-          new_image.pixels.reset((Color*)stbi_loadf(path.c_str(), &width, &height, &nrChannels, 4));
+          float *image_pixels = stbi_loadf(path.c_str(), &width, &height, &nrChannels, 4);
+          ASSERT(width > 0, "Sanity check failed", image.name);
+          ASSERT(height > 0, "Sanity check failed", image.name);
+
+          if (nrChannels != 4) {
+            MR_WARNING("Image {} is not 4-component/pixel - needs realignment. Please do it offline if possible", image.name);
+            image_pixels = realign_3component_image(image_pixels, width, height);
+          }
+
+          new_image.pixels.reset((Color*)image_pixels);
           new_image.width = width;
           new_image.height = height;
           new_image.depth = 1;
         },
         [&](const fastgltf::sources::Array& array) {
-          new_image.pixels.reset((Color*)stbi_loadf_from_memory((uint8_t*)array.bytes.data(),
-                                 static_cast<int>(array.bytes.size()),
-                                 &width, &height, &nrChannels, 4));
+          float *image_pixels = stbi_loadf_from_memory((uint8_t*)array.bytes.data(),
+              static_cast<int>(array.bytes.size()), &width, &height, &nrChannels, 4);
+          ASSERT(width > 0, "Sanity check failed", image.name);
+          ASSERT(height > 0, "Sanity check failed", image.name);
+
+          if (nrChannels != 4) {
+            MR_WARNING("Image {} is not 4-component/pixel - needs realignment. Please do it offline if possible", image.name);
+            image_pixels = realign_3component_image(image_pixels, width, height);
+          }
+
+          new_image.pixels.reset((Color*)image_pixels);
           new_image.width = width;
           new_image.height = height;
           new_image.depth = 1;
         },
         [&](const fastgltf::sources::Vector& vector) {
-          new_image.pixels.reset((Color*)stbi_loadf_from_memory((uint8_t*)vector.bytes.data(),
-                                 static_cast<int>(vector.bytes.size()),
-                                 &width, &height, &nrChannels, 4));
+          float *image_pixels = stbi_loadf_from_memory((uint8_t*)vector.bytes.data(),
+              static_cast<int>(vector.bytes.size()), &width, &height, &nrChannels, 4);
+          ASSERT(width > 0, "Sanity check failed", image.name);
+          ASSERT(height > 0, "Sanity check failed", image.name);
+
+          if (nrChannels != 4) {
+            MR_WARNING("Image {} is not 4-component/pixel - needs realignment. Please do it offline if possible", image.name);
+            image_pixels = realign_3component_image(image_pixels, width, height);
+          }
+
+          new_image.pixels.reset((Color*)image_pixels);
           new_image.width = width;
           new_image.height = height;
           new_image.depth = 1;
@@ -221,9 +260,18 @@ inline namespace importer {
                                          // are already loaded into a vector.
             [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)"); },
             [&](fastgltf::sources::Vector& vector) {
-              new_image.pixels.reset((Color*)stbi_loadf_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
+              float *image_pixels = stbi_loadf_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
                                                         static_cast<int>(bufferView.byteLength),
-                                                        &width, &height, &nrChannels, 4));
+                                                        &width, &height, &nrChannels, 4);
+              ASSERT(width > 0, "Sanity check failed", image.name);
+              ASSERT(height > 0, "Sanity check failed", image.name);
+
+              if (nrChannels != 4) {
+                MR_WARNING("Image {} is not 4-component/pixel - needs realignment. Please do it offline if possible", image.name);
+                image_pixels = realign_3component_image(image_pixels, width, height);
+              }
+
+              new_image.pixels.reset((Color*)image_pixels);
               new_image.width = width;
               new_image.height = height;
               new_image.depth = 1;
