@@ -167,24 +167,6 @@ inline namespace importer {
     return result;
   }
 
-  float * realign_3component_image(float *image_pixels, int width, int height) {
-    size_t image_byte_size = width * height * 4;
-    float *aligned_image_pixels = new (std::nothrow) float[image_byte_size];
-    ASSERT(aligned_image_pixels != nullptr, "Failed to realign image due to lack of memory", image_byte_size);
-
-    for (int i = 0; i < width * height; i++) {
-      aligned_image_pixels[i * 4 + 0] = image_pixels[i * 3 + 0];
-      aligned_image_pixels[i * 4 + 1] = image_pixels[i * 3 + 1];
-      aligned_image_pixels[i * 4 + 2] = image_pixels[i * 3 + 2];
-      aligned_image_pixels[i * 4 + 3] = 0;
-    }
-
-    std::swap(image_pixels, aligned_image_pixels);
-    delete[] aligned_image_pixels;
-
-    return image_pixels;
-  }
-
   /**
    * Decode a glTF image into linear RGBA float pixels using stb_image.
    *
@@ -210,8 +192,9 @@ inline namespace importer {
           ASSERT(height > 0, "Sanity check failed", image.name);
 
           if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component/pixel - needs realignment. Please do it offline if possible", image.name);
-            image_pixels = realign_3component_image(image_pixels, width, height);
+            MR_WARNING("Image {} is not 4-component per pixel."
+                       "Currently it's realigned inside stb every time it gets imported."
+                       "Please do it offline if possible", image.name);
           }
 
           new_image.pixels.reset((Color*)image_pixels);
@@ -226,8 +209,9 @@ inline namespace importer {
           ASSERT(height > 0, "Sanity check failed", image.name);
 
           if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component/pixel - needs realignment. Please do it offline if possible", image.name);
-            image_pixels = realign_3component_image(image_pixels, width, height);
+            MR_WARNING("Image {} is not 4-component per pixel."
+                       "Currently it's realigned inside stb every time it gets imported."
+                       "Please do it offline if possible", image.name);
           }
 
           new_image.pixels.reset((Color*)image_pixels);
@@ -242,8 +226,9 @@ inline namespace importer {
           ASSERT(height > 0, "Sanity check failed", image.name);
 
           if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component/pixel - needs realignment. Please do it offline if possible", image.name);
-            image_pixels = realign_3component_image(image_pixels, width, height);
+            MR_WARNING("Image {} is not 4-component per pixel."
+                       "Currently it's realigned inside stb every time it gets imported."
+                       "Please do it offline if possible", image.name);
           }
 
           new_image.pixels.reset((Color*)image_pixels);
@@ -267,8 +252,9 @@ inline namespace importer {
               ASSERT(height > 0, "Sanity check failed", image.name);
 
               if (nrChannels != 4) {
-                MR_WARNING("Image {} is not 4-component/pixel - needs realignment. Please do it offline if possible", image.name);
-                image_pixels = realign_3component_image(image_pixels, width, height);
+                MR_WARNING("Image {} is not 4-component per pixel."
+                           "Currently it's realigned inside stb every time it gets imported."
+                           "Please do it offline if possible", image.name);
               }
 
               new_image.pixels.reset((Color*)image_pixels);
