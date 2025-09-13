@@ -152,10 +152,12 @@ inline namespace importer {
                                            streams.data(), streams.size());
 
     // LOD generation
-    for (int i = 1; i < count+1; i++) {
-      std::tie(result.lods[i].indices, result.lods[i].shadow_indices) =
-        generate_lod(result.positions, result.lods[0].indices, streams, ratio, i);
-    }
+    tbb::parallel_for<int>(1, count+1,
+      [&result, &streams, &ratio](int i) {
+        std::tie(result.lods[i].indices, result.lods[i].shadow_indices) =
+          generate_lod(result.positions, result.lods[0].indices, streams, ratio, i);
+      }
+    );
 
     return result;
   }
