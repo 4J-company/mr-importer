@@ -22,21 +22,6 @@ inline namespace importer {
    * \param options Import behavior flags, see \ref Options.
    * \return Imported \ref Model or std::nullopt if loading failed.
    */
-  inline std::optional<Model> import(const std::filesystem::path& path, uint32_t options = Options::All)
-  {
-    std::optional<Model> asset = load(path);
-
-    if (!asset) {
-      return std::nullopt;
-    }
-
-    if (options & Options::OptimizeMeshes) {
-      for (Mesh& mesh : asset.value().meshes) {
-        mesh = mr::optimize(std::move(mesh));
-      }
-    }
-
-    return asset;
-  }
+  std::optional<Model> import(const std::filesystem::path& path, uint32_t options = Options::All);
 } // namespace importer
 } // namespace mr

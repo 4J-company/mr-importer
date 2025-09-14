@@ -8,8 +8,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#include <tbb/flow_graph.h>
-
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
