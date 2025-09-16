@@ -68,10 +68,10 @@ inline namespace importer {
         options, &lod_error)
     );
 
-    MR_INFO("LOD {}:", lod_index);
-    MR_INFO("\tTarget index count: {}", target_index_count);
-    MR_INFO("\tIs sparse: {}", is_sparse);
-    MR_INFO("\tError: {}", lod_error);
+    MR_INFO("LOD {}:\n"
+            "\tTarget index count: {}\n"
+            "\tIs sparse: {}\n"
+            "\tError: {}", lod_index, target_index_count, is_sparse, lod_error);
 
     meshopt_optimizeVertexCache(result_indices.data(), result_indices.data(), result_indices.size(), positions.size());
 

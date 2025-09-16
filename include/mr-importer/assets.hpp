@@ -9,21 +9,23 @@ inline namespace importer {
    * \brief Core data structures owned and returned by the importer.
    */
 
+  using PackedVec3f = std::array<float, 3>;
+
   /** \brief 3D position in object space. */
-  using Position = glm::vec3;
+  using Position = PackedVec3f;
   /** \brief Index into vertex arrays. */
   using Index = std::uint32_t;
   /** \brief Local-to-world transform matrix. */
-  using Transform = glm::mat4x4;
+  using Transform = mr::Matr4f;
   /** \brief RGBA color in linear space. */
-  using Color = glm::vec4;
+  using Color = mr::Color;
   /** \brief Per-vertex attributes used by the renderer. */
   struct VertexAttributes {
     Color color;
-    glm::vec3 normal;
-    glm::vec3 tangent;
-    glm::vec3 bitangent;
-    glm::vec2 texcoord;
+    PackedVec3f normal;
+    PackedVec3f tangent;
+    PackedVec3f bitangent;
+    mr::Vec2f texcoord;
   };
 
   // mesh-related data
@@ -69,6 +71,10 @@ inline namespace importer {
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t depth = 1;
+
+    ImageData() = default;
+    ImageData(ImageData&&) noexcept = default;
+    ImageData& operator=(ImageData&&) noexcept = default;
   };
 
   /** \brief Texture sampler settings placeholder. */
@@ -94,6 +100,10 @@ inline namespace importer {
     ImageData image;
     TextureType type;
     SamplerData sampler;
+
+    TextureData() = default;
+    TextureData(TextureData&&) noexcept = default;
+    TextureData& operator=(TextureData&&) noexcept = default;
   };
 
   /** \brief Minimal physically-based material description. */
@@ -112,6 +122,10 @@ inline namespace importer {
 
     ConstantBlock constants;
     std::vector<TextureData> textures;
+
+    MaterialData() = default;
+    MaterialData(MaterialData&&) noexcept = default;
+    MaterialData& operator=(MaterialData&&) noexcept = default;
 
     constexpr std::span<const std::byte, constants_bytesize> constants_data() const noexcept {
       return std::span<const std::byte, constants_bytesize> {

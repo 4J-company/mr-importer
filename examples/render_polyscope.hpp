@@ -60,7 +60,14 @@ inline void render(std::vector<mr::Mesh> meshes) {
     for (int k = 0; k < mesh.transforms.size(); k++) {
       auto fmt = std::format("Mesh {}{}; Instance {}", mesh.name, i, k);
       auto* meshptr = polyscope::registerSurfaceMesh(remove_hashtags(fmt), pos, ind);
-      meshptr->setTransform(mesh.transforms[k]);
+      auto mrt = mesh.transforms[k];
+      glm::mat4 t = {
+        mrt[0][0], mrt[1][0], mrt[2][0], mrt[3][0],
+        mrt[0][1], mrt[1][1], mrt[2][1], mrt[3][1],
+        mrt[0][2], mrt[1][2], mrt[2][2], mrt[3][2],
+        mrt[0][3], mrt[1][3], mrt[2][3], mrt[3][3],
+      };
+      meshptr->setTransform(t);
       // meshptr->setMaterial("normal");
       meshptr->setEdgeWidth(1.0);  // Enable edge rendering by default
     }

@@ -86,39 +86,63 @@ inline namespace importer {
 
     Mesh mesh;
 
+
+    tbb::flow::graph graph;
+
     // Process POSITION attribute
-    std::optional<std::reference_wrapper<const Accessor>> positions = get_accessor_by_name(asset, primitive, "POSITION");
-    if (positions.has_value()) {
-      mesh.positions.reserve(positions.value().get().count);
-      fastgltf::iterateAccessor<glm::vec3>(asset, positions.value(), [&](glm::vec3 v) {
-        mesh.positions.push_back(v);
-      });
-    }
+    tbb::flow::function_node<const char *> position_load {
+      graph, tbb::flow::unlimited, [&](const char *str) {
+        std::optional<std::reference_wrapper<const Accessor>> positions = get_accessor_by_name(asset, primitive, str);
+        if (positions.has_value()) {
+          mesh.positions.reserve(positions.value().get().count);
+          fastgltf::iterateAccessor<glm::vec3>(asset, positions.value(), [&](glm::vec3 v) {
+            mesh.positions.push_back({v.x, v.y, v.z});
+          });
+        }
+      }
+    };
+    position_load.try_put("POSITION");
 
     // Process NORMAL attribute
-    std::optional<std::reference_wrapper<const Accessor>> normals = get_accessor_by_name(asset, primitive, "NORMAL");
-    if (normals.has_value()) {
-      mesh.attributes.resize(normals.value().get().count);
-      fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, normals.value(), [&](glm::vec3 v, int index) {
-        mesh.attributes[index].normal = v;
-      });
-    }
+    tbb::flow::function_node<const char *> normal_load {
+      graph, tbb::flow::unlimited, [&](const char *str) {
+        std::optional<std::reference_wrapper<const Accessor>> normals = get_accessor_by_name(asset, primitive, str);
+        if (normals.has_value()) {
+          mesh.attributes.resize(normals.value().get().count);
+          fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, normals.value(), [&](glm::vec3 v, int index) {
+            mesh.attributes[index].normal = {v.x, v.y, v.z};
+          });
+        }
+      }
+    };
+    normal_load.try_put("NORMAL");
 
     // Process TEXCOORD_0 attribute
-    std::optional<std::reference_wrapper<const Accessor>> texcoords = get_accessor_by_name(asset, primitive, "TEXCOORD_0");
-    if (texcoords.has_value()) {
-      mesh.attributes.resize(texcoords.value().get().count);
-      fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, texcoords.value(), [&](glm::vec2 v, int index) {
-        mesh.attributes[index].texcoord = v;
-      });
-    }
+    tbb::flow::function_node<const char *> texcoord0_load {
+      graph, tbb::flow::unlimited, [&](const char *str) {
+        std::optional<std::reference_wrapper<const Accessor>> texcoords = get_accessor_by_name(asset, primitive, str);
+        if (texcoords.has_value()) {
+          mesh.attributes.resize(texcoords.value().get().count);
+          fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, texcoords.value(), [&](glm::vec2 v, int index) {
+            mesh.attributes[index].texcoord = {v.x, v.y};
+          });
+        }
+      }
+    };
+    texcoord0_load.try_put("TEXCOORD_0");
+
+    ASSERT(primitive.indicesAccessor.has_value());
 
     // Process indices
-    assert(primitive.indicesAccessor.has_value());
-    mesh.lods.resize(1);
-    auto& idxAccessor = asset.accessors[primitive.indicesAccessor.value()];
-    mesh.lods[0].indices.resize(idxAccessor.count);
-    fastgltf::copyFromAccessor<std::uint32_t>(asset, idxAccessor, mesh.lods[0].indices.data());
+    tbb::flow::function_node<const char *> index_load {
+      graph, tbb::flow::unlimited, [&](const char *) {
+        mesh.lods.resize(1);
+        auto& idxAccessor = asset.accessors[primitive.indicesAccessor.value()];
+        mesh.lods[0].indices.resize(idxAccessor.count);
+        fastgltf::copyFromAccessor<std::uint32_t>(asset, idxAccessor, mesh.lods[0].indices.data());
+      }
+    };
+    index_load.try_put(nullptr);
 
     if (primitive.materialIndex) {
       mesh.material = primitive.materialIndex.value();
@@ -126,6 +150,8 @@ inline namespace importer {
     else {
       MR_ERROR("Mesh has no material specified");
     }
+
+    graph.wait_for_all();
 
     return mesh;
   }
@@ -141,15 +167,20 @@ inline namespace importer {
 
     using namespace fastgltf;
 
-    std::mutex res_mtx;
-    std::vector<Mesh> result;
+    tbb::concurrent_vector<Mesh> res;
 
-    std::vector<std::vector<glm::mat4>> transforms;
+    std::vector<std::vector<Transform>> transforms;
     transforms.resize(asset->meshes.size());
     fastgltf::iterateSceneNodes(*asset, 0, fastgltf::math::fmat4x4(),
       [&](fastgltf::Node& node, fastgltf::math::fmat4x4 matrix) {
         if (node.meshIndex.has_value()) {
-          transforms[*node.meshIndex].push_back(glm::make_mat4(matrix.data()));
+          glm::mat4 t = glm::make_mat4(matrix.data());
+          transforms[*node.meshIndex].push_back({
+            t[0][0], t[1][0], t[2][0], t[3][0],
+            t[0][1], t[1][1], t[2][1], t[3][1],
+            t[0][2], t[1][2], t[2][2], t[3][2],
+            t[0][3], t[1][3], t[2][3], t[3][3],
+          });
         }
       }
     );
@@ -162,15 +193,12 @@ inline namespace importer {
         if (mesh_opt.has_value()) {
           mesh_opt->transforms = transforms[i];
           mesh_opt->name = gltfMesh.name;
-          {
-            std::lock_guard lock(res_mtx);
-            result.emplace_back(std::move(mesh_opt.value()));
-          }
+          res.emplace_back(std::move(mesh_opt.value()));
         }
       });
     });
 
-    return result;
+    return {res.begin(), res.end()};
   }
 
   /**
@@ -198,7 +226,7 @@ inline namespace importer {
           ASSERT(height > 0, "Sanity check failed", image.name);
 
           if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component per pixel."
+            MR_WARNING("Image {} is not 4-component per pixel. "
                        "Currently it's realigned inside stb every time it gets imported."
                        "Please do it offline if possible", image.name);
           }
@@ -215,7 +243,7 @@ inline namespace importer {
           ASSERT(height > 0, "Sanity check failed", image.name);
 
           if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component per pixel."
+            MR_WARNING("Image {} is not 4-component per pixel. "
                        "Currently it's realigned inside stb every time it gets imported."
                        "Please do it offline if possible", image.name);
           }
@@ -232,7 +260,7 @@ inline namespace importer {
           ASSERT(height > 0, "Sanity check failed", image.name);
 
           if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component per pixel."
+            MR_WARNING("Image {} is not 4-component per pixel. "
                        "Currently it's realigned inside stb every time it gets imported."
                        "Please do it offline if possible", image.name);
           }
@@ -300,7 +328,10 @@ inline namespace importer {
     fastgltf::Image &img = asset.images[img_idx];
     ImageData img_data = *ASSERT_VAL(get_image_from_gltf(asset, img));
 
-    return TextureData { std::move(img_data), type, SamplerData {} };
+    TextureData res;
+    res.image = std::move(img_data);
+    res.type = type;
+    return res;
   }
 
   /** Convert normalized vec4 to Color. */
@@ -410,19 +441,6 @@ inline namespace importer {
     return materials;
   }
 
-  // Sequence:
-  //   - parse gltf using fastgltf
-  //   - Parallel:
-  //     - mesh processing (DynamicParallel):
-  //       - Sequence:
-  //         - extract from gltf.bufferview's into PositionArray, IndexArray, VertexAttributesArray
-  //         - optimize mesh data using meshoptimizer
-  //     - material processing (DynamicParallel)
-  //       - Sequence:
-  //         - Parallel:
-  //           - extract sampler data into SamplerData
-  //           - extract from texture URI into ImageData using stb
-  //         - compose into TextureData
   /**
    * Load a source asset (currently glTF) and convert it into runtime \ref Model.
    * Returns std::nullopt on parse or IO errors; logs details via MR_ logging.
