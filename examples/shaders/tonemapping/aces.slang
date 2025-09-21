@@ -2,7 +2,7 @@ implementing tonemapper;
 
 public struct ACESToneMapper : IToneMapper
 {
-  float3 evaluate(float3 color)
+  public float3 evaluate(float3 color)
   {
     float a = 2.51f;
     float b = 0.03f;

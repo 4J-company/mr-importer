@@ -6,7 +6,7 @@ import material.material;
 import material.brdf.dummy;
 
 [numthreads(1,1,1)]
-void computeMain(float3* output)
+void main(float3* output)
 {
   DummyBRDF dummy_brdf = {};
   LinearToneMapper linear_tone_mapper = {};
