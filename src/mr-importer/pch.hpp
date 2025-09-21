@@ -40,3 +40,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <slang-com-helper.h>
+#include <slang-com-ptr.h>
+#include <slang.h>
+

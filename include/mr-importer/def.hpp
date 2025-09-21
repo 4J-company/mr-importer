@@ -6,15 +6,12 @@
 #include <memory>
 #include <cstdint>
 
-#include <mr-utils/assert.hpp>
-#include <mr-math/math.hpp>
-
-#include <slang-com-helper.h>
-#include <slang-com-ptr.h>
-#include <slang.h>
-
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 #include <vulkan/vulkan.hpp>
+
+#include <mr-utils/assert.hpp>
+
+#include <mr-math/math.hpp>
 
 namespace mr {
 inline namespace importer {
