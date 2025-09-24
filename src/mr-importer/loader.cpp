@@ -25,18 +25,25 @@ inline namespace importer {
 
     auto [err, data] = GltfDataBuffer::FromPath(path);
     if (err != Error::None) {
-      MR_ERROR("Failed to parse GLTF file");
-      MR_ERROR("Error code: {}", (int)err);
+      MR_ERROR("Failed to parse GLTF file\n"
+               "\t\t{}: {}", getErrorName(err), getErrorMessage(err));
       return std::nullopt; // Failed to load GLTF data
     }
 
-    Parser parser;
-    auto options = fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadExternalImages;
+    auto extensions = fastgltf::Extensions::KHR_lights_punctual
+                    | fastgltf::Extensions::None
+                    ;
+    Parser parser(extensions);
+    auto options = fastgltf::Options::LoadExternalBuffers
+                 | fastgltf::Options::LoadExternalImages
+                 | fastgltf::Options::DontRequireValidAssetMember
+                 ;
+    
     auto [error, asset] = parser.loadGltf(data, path.parent_path(), options);
     if (error != Error::None) {
-      MR_ERROR("Failed to parse GLTF file");
-      MR_ERROR("Error code: {}", (int)error);
-      return std::nullopt;
+      MR_ERROR("Failed to parse GLTF file\n"
+               "\t\t{}: {}", getErrorName(error), getErrorMessage(error));
+      return std::nullopt; // Failed to load GLTF data
     }
 
     return std::move(asset);
@@ -216,19 +223,24 @@ inline namespace importer {
       fastgltf::visitor {
         [](auto& arg) { ASSERT(false, "Unsupported image source in a GLTF file", arg); },
         [&](const fastgltf::sources::URI& filePath) {
-          ASSERT(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-          ASSERT(filePath.uri.isLocalPath());   // We're only capable of loading local files.
+          ASSERT(filePath.fileByteOffset == 0,
+              "Offsets with files are not supported becaues plain STB doesn't support them.",
+              filePath.uri.c_str());
+          ASSERT(filePath.uri.isLocalPath(),
+              "Tried to load an image from absolute path"
+              " - we don't support that (local files only)",
+              filePath.uri.c_str());
 
           const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());
 
           float *image_pixels = stbi_loadf(path.c_str(), &width, &height, &nrChannels, 4);
-          ASSERT(width > 0, "Sanity check failed", image.name);
-          ASSERT(height > 0, "Sanity check failed", image.name);
+          ASSERT(width > 0, "Sanity check failed", image.name, path.c_str());
+          ASSERT(height > 0, "Sanity check failed", image.name, path.c_str());
 
           if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component per pixel. "
-                       "Currently it's realigned inside stb every time it gets imported."
-                       "Please do it offline if possible", image.name);
+            MR_WARNING("Image {} ({}) is not 4-component per pixel. "
+                       "Currently it's realigned inside stb every time it gets imported. "
+                       "Please do it offline if possible", image.name, filePath.uri.c_str());
           }
 
           new_image.pixels.reset((Color*)image_pixels);
@@ -301,7 +313,7 @@ inline namespace importer {
       },
       image.data);
 
-    ASSERT(new_image.pixels.get() != nullptr, "Unexpected error reading image data. Needs investigation");
+    ASSERT(new_image.pixels.get() != nullptr, "Unexpected error reading image data. Needs investigation", image.name);
 
     return new_image;
   }
