@@ -159,6 +159,14 @@ inline namespace importer {
       }
     );
 
+    result.lods.erase(std::ranges::find_if(result.lods, [](const auto &indices) {
+      bool res = indices.indices.size() == 0;
+      if (res) {
+        MR_DEBUG("Generated degenerate LOD. Need to investigate meshoptimizer");
+      }
+      return res;
+    }));
+
     return result;
   }
 }
