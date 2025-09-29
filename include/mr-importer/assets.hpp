@@ -212,7 +212,7 @@ inline namespace importer {
       case VK_FORMAT_B12X4G12X4R12X4G12X4_422_UNORM_4PACK16_KHR: res = 8; break;
       case VK_FORMAT_G16B16G16R16_422_UNORM_KHR: res = 8; break;
       case VK_FORMAT_B16G16R16G16_422_UNORM_KHR: res = 8; break;
-      default: ASSERT(false, "Unhandled vk::Format", format);                                           
+      default: ASSERT(false, "Unhandled vk::Format", (int)format);                                           
     }
 
     return res;

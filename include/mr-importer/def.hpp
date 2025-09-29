@@ -6,6 +6,7 @@
 #include <memory>
 #include <cstdint>
 
+#include <mr-utils/assert.hpp>
 #include <mr-math/math.hpp>
 
 #include <slang-com-helper.h>

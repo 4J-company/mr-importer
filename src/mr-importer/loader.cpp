@@ -282,7 +282,7 @@ inline namespace importer {
 
           if (nrChannels != 3) {
             MR_WARNING("Image {} is not 3-component per pixel - it's {}-component. "
-                       "Currently it's realigned inside stb every time it gets imported."
+                       "Currently it's realigned inside stb every time it gets imported. "
                        "Please do it offline if possible", image.name, nrChannels);
           }
 
@@ -297,7 +297,7 @@ inline namespace importer {
 
           if (nrChannels != 3) {
             MR_WARNING("Image {} is not 3-component per pixel - it's {}-component. "
-                       "Currently it's realigned inside stb every time it gets imported."
+                       "Currently it's realigned inside stb every time it gets imported. "
                        "Please do it offline if possible", image.name, nrChannels);
           }
 
