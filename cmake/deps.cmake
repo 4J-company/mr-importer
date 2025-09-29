@@ -11,12 +11,13 @@ find_package(glm REQUIRED)
 find_package(slang REQUIRED)
 find_package(mr-math REQUIRED)
 find_package(mr-manager REQUIRED)
-
+find_package(VulkanHeaders REQUIRED)
 set(MR_IMPORTER_PUBLIC_DEPS
   glm::glm
   slang::slang
   mr-math::mr-math
   mr-manager::mr-manager
+  vulkan-headers::vulkan-headers
 )
 
 # private dependencies
@@ -27,6 +28,7 @@ find_package(fastgltf REQUIRED)
 find_package(stb REQUIRED)
 find_package(mr-utils REQUIRED)
 find_package(TBB REQUIRED)
+CPMAddPackage("gh:spnda/dds_image#main")
 
 set(MR_IMPORTER_PRIVATE_DEPS
   meshoptimizer::meshoptimizer
@@ -36,4 +38,5 @@ set(MR_IMPORTER_PRIVATE_DEPS
   stb::stb
   fmt::fmt
   onetbb::onetbb
+  dds_image
 )

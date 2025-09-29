@@ -55,6 +55,45 @@ inline namespace importer {
       IndexArray shadow_indices;
     };
 
+    static inline constexpr std::array _descrs {
+      vk::VertexInputAttributeDescription {
+        .location = 0,
+        .binding = 0,
+        .format = vk::Format::eR32G32B32Sfloat,
+        .offset = 0
+      },
+      vk::VertexInputAttributeDescription {
+        .location = 1,
+        .binding = 1,
+        .format = vk::Format::eR32G32B32A32Sfloat,
+        .offset = 0
+      },
+      vk::VertexInputAttributeDescription {
+        .location = 2,
+        .binding = 1,
+        .format = vk::Format::eR32G32B32Sfloat,
+        .offset = 16
+      },
+      vk::VertexInputAttributeDescription {
+        .location = 3,
+        .binding = 1,
+        .format = vk::Format::eR32G32B32Sfloat,
+        .offset = 28
+      },
+      vk::VertexInputAttributeDescription {
+        .location = 4,
+        .binding = 1,
+        .format = vk::Format::eR32G32B32Sfloat,
+        .offset = 40
+      },
+      vk::VertexInputAttributeDescription {
+        .location = 5,
+        .binding = 1,
+        .format = vk::Format::eR32G32Sfloat,
+        .offset = 52
+      },
+    };
+
     PositionArray positions;
     VertexAttributesArray attributes;
     std::vector<LOD> lods;
@@ -67,14 +106,19 @@ inline namespace importer {
   /** \brief Raw image data stored as linear RGBA float pixels. */
   struct ImageData {
     // unique ptr because memory is allocated by stb and passed to us
-    std::unique_ptr<Color[]> pixels;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t depth = 1;
+    std::unique_ptr<std::byte[]> pixels;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t depth = 1;
+    int32_t mip_level = 1;
+    vk::Format format = vk::Format::eR8G8B8Uint;
 
     ImageData() = default;
     ImageData(ImageData&&) noexcept = default;
     ImageData& operator=(ImageData&&) noexcept = default;
+
+    uint32_t pixel_byte_size() const noexcept;
+    constexpr uint32_t num_of_pixels() const noexcept { return width * height / pixel_byte_size(); }
   };
 
   /** \brief Texture sampler settings placeholder. */

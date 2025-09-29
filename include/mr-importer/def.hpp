@@ -12,6 +12,9 @@
 #include <slang-com-ptr.h>
 #include <slang.h>
 
+#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+#include <vulkan/vulkan.hpp>
+
 namespace mr {
 inline namespace importer {
 }
