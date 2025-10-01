@@ -10,7 +10,7 @@ option(MR_IMPORTER_BUILD_EXAMPLES "Whether examples are built" OFF)
 
 project(
   ${MR_IMPORTER_PROJECT_NAME}
-  VERSION 1.3.0
+  VERSION 2.1.0
   LANGUAGES CXX
 )
 
@@ -72,7 +72,7 @@ if (MR_IMPORTER_BUILD_EXAMPLES)
   target_link_libraries(mr-importer-shader-example PUBLIC mr-importer-lib)
 endif()
 
-install(TARGETS ${MR_IMPORTER_LIB_NAME}
+install(TARGETS ${MR_IMPORTER_LIB_NAME} dds_image
     EXPORT mr-importer-targets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib

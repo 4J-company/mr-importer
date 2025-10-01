@@ -8,19 +8,34 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include <dds.hpp>
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
 
 namespace mr {
 inline namespace importer {
+  template <typename T>
+  T* steal_memory(std::vector<T>& victim)
+  {
+    union Theft
+    {
+      std::vector<T> target;
+      ~Theft() {}
+    } place_for_crime = {std::move(victim)};
+    return place_for_crime.target.data();
+  }
+
+
   /**
    * Parse a glTF file into a fastgltf::Asset.
    *
    * On IO or parse error, logs an error with the fastgltf code and returns
    * std::nullopt. Uses LoadExternalBuffers/Images to resolve external data.
    */
-  static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &path) {
+  static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &path)
+  {
     using namespace fastgltf;
 
     auto [err, data] = GltfDataBuffer::FromPath(path);
@@ -88,7 +103,8 @@ inline namespace importer {
    * leaves attributes partially defaulted if normals are missing.
    * Asserts that indices accessor exists.
    */
-  static std::optional<Mesh> get_mesh_from_primitive(const fastgltf::Asset &asset, const fastgltf::Primitive &primitive) {
+  static std::optional<Mesh> get_mesh_from_primitive(const fastgltf::Asset &asset, const fastgltf::Primitive &primitive)
+  {
     using namespace fastgltf;
 
     Mesh mesh;
@@ -208,16 +224,21 @@ inline namespace importer {
     return {res.begin(), res.end()};
   }
 
+  uint32_t ImageData::pixel_byte_size() const noexcept
+  {
+    return format_byte_size(format);
+  }
+
   /**
    * Decode a glTF image into linear RGBA float pixels using stb_image.
    *
    * Supports URI, embedded vector, and buffer view sources. Returns an
    * ImageData with owned memory; logs warnings for unexpected sources.
    */
-  static std::optional<ImageData> get_image_from_gltf(const fastgltf::Asset &asset, const fastgltf::Image &image) {
+  static std::optional<ImageData> get_image_from_gltf(const fastgltf::Asset &asset, const fastgltf::Image &image)
+  {
     ImageData new_image {};
-
-    int width, height, nrChannels;
+    int nrChannels = -1;
 
     std::visit(
       fastgltf::visitor {
@@ -233,53 +254,89 @@ inline namespace importer {
 
           const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());
 
-          float *image_pixels = stbi_loadf(path.c_str(), &width, &height, &nrChannels, 4);
-          ASSERT(width > 0, "Sanity check failed", image.name, path.c_str());
-          ASSERT(height > 0, "Sanity check failed", image.name, path.c_str());
+          std::byte *image_pixels = nullptr;
+          if (filePath.mimeType == fastgltf::MimeType::DDS) {
+            dds::Image image;
+            dds::ReadResult res = dds::readFile(path, &image);
+            ASSERT(res == dds::ReadResult::Success, "Unable to parse DDS image", res);
+            ASSERT(image.data.size() > 0, "Unable to load DDS image", res);
 
-          if (nrChannels != 4) {
-            MR_WARNING("Image {} ({}) is not 4-component per pixel. "
-                       "Currently it's realigned inside stb every time it gets imported. "
-                       "Please do it offline if possible", image.name, filePath.uri.c_str());
+            new_image.width = image.width;
+            new_image.height = image.height;
+            new_image.depth = image.arraySize;
+            new_image.format = (vk::Format)dds::getVulkanFormat(image.format, image.supportsAlpha);
+            nrChannels = image.data.size() / image.width / image.height; // assume each channel is a single byte
+            new_image.mip_level = image.mipmaps.size();
+
+            image_pixels = (std::byte*)steal_memory(image.data);
+            ASSERT(new_image.pixels.get() != nullptr, "Couldn't allocate pixels array");
           }
+          else {
+            image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &nrChannels, 0);
+            if (nrChannels == 4) {
+              new_image.format = vk::Format::eR8G8B8A8Uint;
+            }
+            else if (nrChannels == 3) {
+              new_image.format = vk::Format::eR8G8B8Uint;
+            }
+            else if (nrChannels == 2) {
+              new_image.format = vk::Format::eR8G8Uint;
+            }
+            else if (nrChannels == 1) {
+              new_image.format = vk::Format::eR8Uint;
+            }
+          }
+          ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
+          ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
+          ASSERT(nrChannels > 0, "Sanity check failed", image.name, path.c_str());
 
-          new_image.pixels.reset((Color*)image_pixels);
-          new_image.width = width;
-          new_image.height = height;
+          new_image.pixels.reset(image_pixels);
           new_image.depth = 1;
         },
         [&](const fastgltf::sources::Array& array) {
-          float *image_pixels = stbi_loadf_from_memory((uint8_t*)array.bytes.data(),
-              static_cast<int>(array.bytes.size()), &width, &height, &nrChannels, 4);
-          ASSERT(width > 0, "Sanity check failed", image.name);
-          ASSERT(height > 0, "Sanity check failed", image.name);
+          std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)array.bytes.data(),
+              static_cast<int>(array.bytes.size()), &new_image.width, &new_image.height, &nrChannels, 0);
+          ASSERT(new_image.width > 0, "Sanity check failed", image.name);
+          ASSERT(new_image.height > 0, "Sanity check failed", image.name);
+          ASSERT(nrChannels > 0, "Sanity check failed", image.name);
 
-          if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component per pixel. "
-                       "Currently it's realigned inside stb every time it gets imported."
-                       "Please do it offline if possible", image.name);
+          if (nrChannels == 4) {
+            new_image.format = vk::Format::eR8G8B8A8Uint;
+          }
+          else if (nrChannels == 3) {
+            new_image.format = vk::Format::eR8G8B8Uint;
+          }
+          else if (nrChannels == 2) {
+            new_image.format = vk::Format::eR8G8Uint;
+          }
+          else if (nrChannels == 1) {
+            new_image.format = vk::Format::eR8Uint;
           }
 
-          new_image.pixels.reset((Color*)image_pixels);
-          new_image.width = width;
-          new_image.height = height;
+          new_image.pixels.reset(image_pixels);
           new_image.depth = 1;
         },
         [&](const fastgltf::sources::Vector& vector) {
-          float *image_pixels = stbi_loadf_from_memory((uint8_t*)vector.bytes.data(),
-              static_cast<int>(vector.bytes.size()), &width, &height, &nrChannels, 4);
-          ASSERT(width > 0, "Sanity check failed", image.name);
-          ASSERT(height > 0, "Sanity check failed", image.name);
+          std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)vector.bytes.data(),
+              static_cast<int>(vector.bytes.size()), &new_image.width, &new_image.height, &nrChannels, 0);
+          ASSERT(new_image.width > 0, "Sanity check failed", image.name);
+          ASSERT(new_image.height > 0, "Sanity check failed", image.name);
+          ASSERT(nrChannels > 0, "Sanity check failed", image.name);
 
-          if (nrChannels != 4) {
-            MR_WARNING("Image {} is not 4-component per pixel. "
-                       "Currently it's realigned inside stb every time it gets imported."
-                       "Please do it offline if possible", image.name);
+          if (nrChannels == 4) {
+            new_image.format = vk::Format::eR8G8B8A8Uint;
+          }
+          else if (nrChannels == 3) {
+            new_image.format = vk::Format::eR8G8B8Uint;
+          }
+          else if (nrChannels == 2) {
+            new_image.format = vk::Format::eR8G8Uint;
+          }
+          else if (nrChannels == 1) {
+            new_image.format = vk::Format::eR8Uint;
           }
 
-          new_image.pixels.reset((Color*)image_pixels);
-          new_image.width = width;
-          new_image.height = height;
+          new_image.pixels.reset(image_pixels);
           new_image.depth = 1;
         },
         [&](const fastgltf::sources::BufferView& view) {
@@ -291,21 +348,27 @@ inline namespace importer {
                                          // are already loaded into a vector.
             [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)"); },
             [&](fastgltf::sources::Vector& vector) {
-              float *image_pixels = stbi_loadf_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
+            std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
                                                         static_cast<int>(bufferView.byteLength),
-                                                        &width, &height, &nrChannels, 4);
-              ASSERT(width > 0, "Sanity check failed", image.name);
-              ASSERT(height > 0, "Sanity check failed", image.name);
+                                                        &new_image.width, &new_image.height, &nrChannels, 0);
+              ASSERT(new_image.width > 0, "Sanity check failed", image.name);
+              ASSERT(new_image.height > 0, "Sanity check failed", image.name);
+              ASSERT(nrChannels > 0, "Sanity check failed", image.name);
 
-              if (nrChannels != 4) {
-                MR_WARNING("Image {} is not 4-component per pixel."
-                           "Currently it's realigned inside stb every time it gets imported."
-                           "Please do it offline if possible", image.name);
+              if (nrChannels == 4) {
+                new_image.format = vk::Format::eR8G8B8A8Uint;
+              }
+              else if (nrChannels == 3) {
+                new_image.format = vk::Format::eR8G8B8Uint;
+              }
+              else if (nrChannels == 2) {
+                new_image.format = vk::Format::eR8G8Uint;
+              }
+              else if (nrChannels == 1) {
+                new_image.format = vk::Format::eR8Uint;
               }
 
-              new_image.pixels.reset((Color*)image_pixels);
-              new_image.width = width;
-              new_image.height = height;
+              new_image.pixels.reset(image_pixels);
               new_image.depth = 1;
             }
           }, buffer.data);
@@ -331,11 +394,17 @@ inline namespace importer {
   {
     fastgltf::Texture &tex = asset.textures[texinfo.textureIndex];
 
-    if (!tex.imageIndex.has_value()) {
-      return std::unexpected("Texture is in unsupported format (DDS, WEBP, etc)");
-    }
+    size_t img_idx = ~0z;
 
-    size_t img_idx = tex.imageIndex.value();
+    if (tex.imageIndex.has_value()) {
+      img_idx = tex.imageIndex.value();
+    }
+    if (tex.ddsImageIndex.has_value()) {
+      img_idx = tex.ddsImageIndex.value();
+    }
+    if (img_idx == ~0z) {
+      return std::unexpected("Texture is in unsupported format (KTX, WEBP, etc)");
+    }
 
     fastgltf::Image &img = asset.images[img_idx];
     ImageData img_data = *ASSERT_VAL(get_image_from_gltf(asset, img));
