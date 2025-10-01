@@ -265,30 +265,30 @@ inline namespace importer {
             new_image.height = image.height;
             new_image.depth = image.arraySize;
             new_image.format = (vk::Format)dds::getVulkanFormat(image.format, image.supportsAlpha);
+            nrChannels = image.data.size() / image.width / image.height; // assume each channel is a single byte
             new_image.mip_level = image.mipmaps.size();
 
-            new_image.pixels = std::unique_ptr<std::byte[]>((std::byte*)steal_memory(image.data));
+            image_pixels = (std::byte*)steal_memory(image.data);
             ASSERT(new_image.pixels.get() != nullptr, "Couldn't allocate pixels array");
           }
           else {
             image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &nrChannels, 0);
+            if (nrChannels == 4) {
+              new_image.format = vk::Format::eR8G8B8A8Uint;
+            }
+            else if (nrChannels == 3) {
+              new_image.format = vk::Format::eR8G8B8Uint;
+            }
+            else if (nrChannels == 2) {
+              new_image.format = vk::Format::eR8G8Uint;
+            }
+            else if (nrChannels == 1) {
+              new_image.format = vk::Format::eR8Uint;
+            }
           }
           ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
           ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
           ASSERT(nrChannels > 0, "Sanity check failed", image.name, path.c_str());
-
-          if (nrChannels == 4) {
-            new_image.format = vk::Format::eR8G8B8A8Uint;
-          }
-          else if (nrChannels == 3) {
-            new_image.format = vk::Format::eR8G8B8Uint;
-          }
-          else if (nrChannels == 2) {
-            new_image.format = vk::Format::eR8G8Uint;
-          }
-          else if (nrChannels == 1) {
-            new_image.format = vk::Format::eR8Uint;
-          }
 
           new_image.pixels.reset(image_pixels);
           new_image.depth = 1;
