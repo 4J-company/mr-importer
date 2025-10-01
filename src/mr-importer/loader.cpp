@@ -16,6 +16,18 @@
 
 namespace mr {
 inline namespace importer {
+  template <typename T>
+  T* steal_memory(std::vector<T>& victim)
+  {
+    union Theft
+    {
+      std::vector<T> target;
+      ~Theft() {}
+    } place_for_crime = {std::move(victim)};
+    return place_for_crime.target.data();
+  }
+
+
   /**
    * Parse a glTF file into a fastgltf::Asset.
    *
@@ -255,20 +267,27 @@ inline namespace importer {
             new_image.format = (vk::Format)dds::getVulkanFormat(image.format, image.supportsAlpha);
             new_image.mip_level = image.mipmaps.size();
 
-            new_image.pixels = std::make_unique_for_overwrite<std::byte[]>(image.data.size());
+            new_image.pixels = std::unique_ptr<std::byte[]>((std::byte*)steal_memory(image.data));
             ASSERT(new_image.pixels.get() != nullptr, "Couldn't allocate pixels array");
-            std::memcpy(image.data.data(), new_image.pixels.get(), image.data.size());
           }
           else {
-            image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &nrChannels, 3);
+            image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &nrChannels, 0);
           }
           ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
           ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
+          ASSERT(nrChannels > 0, "Sanity check failed", image.name, path.c_str());
 
-          if (nrChannels != 3) {
-            MR_WARNING("Image {} ({}) is not 3-component per pixel - it's {}-component. "
-                       "Currently it's realigned inside stb every time it gets imported. "
-                       "Please do it offline if possible", image.name, filePath.uri.c_str(), nrChannels);
+          if (nrChannels == 4) {
+            new_image.format = vk::Format::eR8G8B8A8Uint;
+          }
+          else if (nrChannels == 3) {
+            new_image.format = vk::Format::eR8G8B8Uint;
+          }
+          else if (nrChannels == 2) {
+            new_image.format = vk::Format::eR8G8Uint;
+          }
+          else if (nrChannels == 1) {
+            new_image.format = vk::Format::eR8Uint;
           }
 
           new_image.pixels.reset(image_pixels);
@@ -276,14 +295,22 @@ inline namespace importer {
         },
         [&](const fastgltf::sources::Array& array) {
           std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)array.bytes.data(),
-              static_cast<int>(array.bytes.size()), &new_image.width, &new_image.height, &nrChannels, 3);
+              static_cast<int>(array.bytes.size()), &new_image.width, &new_image.height, &nrChannels, 0);
           ASSERT(new_image.width > 0, "Sanity check failed", image.name);
           ASSERT(new_image.height > 0, "Sanity check failed", image.name);
+          ASSERT(nrChannels > 0, "Sanity check failed", image.name);
 
-          if (nrChannels != 3) {
-            MR_WARNING("Image {} is not 3-component per pixel - it's {}-component. "
-                       "Currently it's realigned inside stb every time it gets imported. "
-                       "Please do it offline if possible", image.name, nrChannels);
+          if (nrChannels == 4) {
+            new_image.format = vk::Format::eR8G8B8A8Uint;
+          }
+          else if (nrChannels == 3) {
+            new_image.format = vk::Format::eR8G8B8Uint;
+          }
+          else if (nrChannels == 2) {
+            new_image.format = vk::Format::eR8G8Uint;
+          }
+          else if (nrChannels == 1) {
+            new_image.format = vk::Format::eR8Uint;
           }
 
           new_image.pixels.reset(image_pixels);
@@ -291,14 +318,22 @@ inline namespace importer {
         },
         [&](const fastgltf::sources::Vector& vector) {
           std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)vector.bytes.data(),
-              static_cast<int>(vector.bytes.size()), &new_image.width, &new_image.height, &nrChannels, 3);
+              static_cast<int>(vector.bytes.size()), &new_image.width, &new_image.height, &nrChannels, 0);
           ASSERT(new_image.width > 0, "Sanity check failed", image.name);
           ASSERT(new_image.height > 0, "Sanity check failed", image.name);
+          ASSERT(nrChannels > 0, "Sanity check failed", image.name);
 
-          if (nrChannels != 3) {
-            MR_WARNING("Image {} is not 3-component per pixel - it's {}-component. "
-                       "Currently it's realigned inside stb every time it gets imported. "
-                       "Please do it offline if possible", image.name, nrChannels);
+          if (nrChannels == 4) {
+            new_image.format = vk::Format::eR8G8B8A8Uint;
+          }
+          else if (nrChannels == 3) {
+            new_image.format = vk::Format::eR8G8B8Uint;
+          }
+          else if (nrChannels == 2) {
+            new_image.format = vk::Format::eR8G8Uint;
+          }
+          else if (nrChannels == 1) {
+            new_image.format = vk::Format::eR8Uint;
           }
 
           new_image.pixels.reset(image_pixels);
@@ -315,14 +350,22 @@ inline namespace importer {
             [&](fastgltf::sources::Vector& vector) {
             std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
                                                         static_cast<int>(bufferView.byteLength),
-                                                        &new_image.width, &new_image.height, &nrChannels, 3);
+                                                        &new_image.width, &new_image.height, &nrChannels, 0);
               ASSERT(new_image.width > 0, "Sanity check failed", image.name);
               ASSERT(new_image.height > 0, "Sanity check failed", image.name);
+              ASSERT(nrChannels > 0, "Sanity check failed", image.name);
 
-              if (nrChannels != 3) {
-                MR_WARNING("Image {} is not 3-component per pixel - it's {}-component. "
-                           "Currently it's realigned inside stb every time it gets imported. "
-                           "Please do it offline if possible.", image.name, nrChannels);
+              if (nrChannels == 4) {
+                new_image.format = vk::Format::eR8G8B8A8Uint;
+              }
+              else if (nrChannels == 3) {
+                new_image.format = vk::Format::eR8G8B8Uint;
+              }
+              else if (nrChannels == 2) {
+                new_image.format = vk::Format::eR8G8Uint;
+              }
+              else if (nrChannels == 1) {
+                new_image.format = vk::Format::eR8Uint;
               }
 
               new_image.pixels.reset(image_pixels);
