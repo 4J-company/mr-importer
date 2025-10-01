@@ -388,7 +388,8 @@ inline namespace importer {
     ImageData& operator=(ImageData&&) noexcept = default;
 
     uint32_t pixel_byte_size() const noexcept;
-    constexpr uint32_t num_of_pixels() const noexcept { return width * height / pixel_byte_size(); }
+    constexpr uint32_t num_of_pixels() const noexcept { return width * height; }
+    constexpr uint32_t byte_size() const noexcept { return num_of_pixels() * pixel_byte_size(); }
   };
 
   /** \brief Texture sampler settings placeholder. */
