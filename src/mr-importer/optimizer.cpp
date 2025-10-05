@@ -16,8 +16,8 @@ inline namespace importer {
     size_t lod_count = 0;
 
     if (lod_scale > 1) {
-        MR_WARNING("LOD Scale greater than 1. Needs investigation");
-        lod_scale = 0.1;
+      MR_WARNING("LOD Scale greater than 1 ({}). Needs investigation", lod_scale);
+      lod_scale = 0.1;
     }
 
     // we want any mesh to have at least 47 triangles
@@ -68,11 +68,6 @@ inline namespace importer {
         target_index_count, target_error,
         options, &lod_error)
     );
-
-    MR_INFO("LOD {}:\n"
-            "\tTarget index count: {}\n"
-            "\tIs sparse: {}\n"
-            "\tError: {}", lod_index, target_index_count, is_sparse, lod_error);
 
     meshopt_optimizeVertexCache(result_indices.data(), result_indices.data(), result_indices.size(), positions.size());
 
@@ -181,14 +176,11 @@ inline namespace importer {
       }
     );
 
-    for (int i = 1; i < result.lods.size();) {
+    for (int i = result.lods.size()-1; i > 0; i--) {
       const auto &indices = result.lods[i];
       if (indices.indices.size() == 0) {
-        MR_DEBUG("Generated degenerate LOD. Need to investigate meshoptimizer");
+        MR_DEBUG("Generated degenerate LOD#{} at {}. Need to investigate meshoptimizer", i, result.name);
         result.lods.erase(result.lods.begin() + i);
-      }
-      else {
-        i++;
       }
     }
 

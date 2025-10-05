@@ -254,7 +254,8 @@ inline namespace importer {
               " - we don't support that (local files only)",
               filePath.uri.c_str());
 
-          const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());
+          std::filesystem::path absolute_path = std::filesystem::current_path() / filePath.uri.fspath();
+          const std::string path = std::move(absolute_path).string();
 
           std::byte *image_pixels = nullptr;
           if (filePath.mimeType == fastgltf::MimeType::DDS) {
