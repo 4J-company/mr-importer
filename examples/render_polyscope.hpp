@@ -22,7 +22,7 @@ inline std::string remove_hashtags(std::string_view format_str) {
 }
 
 template <typename T>
-inline std::vector<std::array<T, 3>> convertToArrayOfTriples(const std::vector<T>& input) {
+inline std::vector<std::array<T, 3>> convertToArrayOfTriples(const std::span<T>& input) {
   const uint32_t newSize = input.size() / 3;
   std::vector<std::array<T, 3>> result;
   result.reserve(newSize);
@@ -32,12 +32,6 @@ inline std::vector<std::array<T, 3>> convertToArrayOfTriples(const std::vector<T
   }
 
   return result;
-}
-
-inline void render(std::vector<glm::vec3> positions, std::vector<uint32_t> indices) {
-  polyscope::init();
-  auto mesh = polyscope::registerSurfaceMesh("my mesh", positions, convertToArrayOfTriples(indices));
-  polyscope::show();
 }
 
 inline void render(std::vector<mr::Mesh> meshes) {

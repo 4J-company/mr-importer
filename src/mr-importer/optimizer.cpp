@@ -33,9 +33,10 @@ inline namespace importer {
     return {lod_count, lod_scale};
   }
 
-  std::pair<IndexArray, IndexArray> generate_lod(
+  std::pair<IndexSpan, IndexSpan> generate_lod(
     const PositionArray &positions,
-    const IndexArray &original_indices,
+    const IndexSpan &original_indices,
+    IndexArray &index_array,
     const std::span<meshopt_Stream> &streams,
     float lod_ratio,
     int lod_index)
@@ -82,7 +83,25 @@ inline namespace importer {
                                            streams.data(), streams.size());
     meshopt_optimizeVertexCache(result_shadow_indices.data(), result_shadow_indices.data(), result_shadow_indices.size(), positions.size());
 
-    return {result_indices, result_shadow_indices};
+    size_t original_index_array_size = index_array.size();
+    size_t result_indices_size = result_indices.size();
+    size_t result_shadow_indices_size = result_shadow_indices.size();
+
+    IndexSpan result_indices_span;
+    IndexSpan result_shadow_indices_span;
+
+    static std::mutex index_array_mutex;
+    {
+      std::lock_guard l(index_array_mutex);
+      index_array.reserve(index_array.size() + result_indices.size() + result_shadow_indices.size());
+      index_array.append_range(std::move(result_indices));
+      index_array.append_range(std::move(result_shadow_indices));
+
+      result_indices_span = IndexSpan(index_array.data() + original_index_array_size, result_indices_size);
+      result_indices_span = IndexSpan(index_array.data() + original_index_array_size + result_indices_size, result_shadow_indices_size);
+    }
+
+    return {result_indices_span, result_shadow_indices_span};
   }
 
   /**
@@ -98,8 +117,8 @@ inline namespace importer {
     }
 
     Mesh result;
-    result.transforms = mesh.transforms;
-    result.name = mesh.name;
+    result.transforms = std::move(mesh.transforms);
+    result.name = std::move(mesh.name);
     result.material = mesh.material;
 
     std::array streams = {
@@ -108,44 +127,47 @@ inline namespace importer {
     };
 
     auto [count, ratio] = determine_lod_count_and_ratio(mesh.positions);
-    result.lods.resize(count+1);
+    result.indices.reserve(2 * mesh.indices.size() * (count + 1));
+    result.lods.resize(count + 1);
 
     // improve vertex locality
-    meshopt_optimizeVertexCache(mesh.lods[0].indices.data(), mesh.lods[0].indices.data(), mesh.lods[0].indices.size(), mesh.positions.size());
+    meshopt_optimizeVertexCache(mesh.indices.data(), mesh.indices.data(), mesh.indices.size(), mesh.positions.size());
 
     // optimize overdraw
-    meshopt_optimizeOverdraw(mesh.lods[0].indices.data(), mesh.lods[0].indices.data(), mesh.lods[0].indices.size(),
+    meshopt_optimizeOverdraw(mesh.indices.data(), mesh.indices.data(), mesh.indices.size(),
                              (float*)mesh.positions.data(), mesh.positions.size(), sizeof(Position), 1.05f);
 
     IndexArray remap;
-    remap.resize(mesh.lods[0].indices.size());
+    remap.resize(mesh.indices.size());
     size_t vertex_count = meshopt_generateVertexRemapMulti(
       remap.data(),
-      mesh.lods[0].indices.data(),
-      mesh.lods[0].indices.size(),
+      mesh.indices.data(),
+      mesh.indices.size(),
       mesh.positions.size(),
       streams.data(),
       streams.size());
 
-    result.lods[0].indices.resize(mesh.lods[0].indices.size());
+    result.indices.resize(mesh.indices.size());
     result.positions.resize(vertex_count);
     result.attributes.resize(vertex_count);
 
-    meshopt_remapIndexBuffer(result.lods[0].indices.data(), mesh.lods[0].indices.data(), mesh.lods[0].indices.size(), remap.data());
+    meshopt_remapIndexBuffer(result.indices.data(), mesh.indices.data(), mesh.indices.size(), remap.data());
     meshopt_remapVertexBuffer(result.positions.data(), mesh.positions.data(), mesh.positions.size(), sizeof(Position), remap.data());
     meshopt_remapVertexBuffer(result.attributes.data(), mesh.attributes.data(), mesh.positions.size(), sizeof(VertexAttributes), remap.data());
 
     meshopt_optimizeVertexFetchRemap(
       remap.data(),
-      result.lods[0].indices.data(), result.lods[0].indices.size(),
+      result.indices.data(), result.indices.size(),
       result.positions.size());
 
     // NOTE: we run remap functions the second time as recommended by docs
-    meshopt_remapIndexBuffer(result.lods[0].indices.data(), result.lods[0].indices.data(), result.lods[0].indices.size(), remap.data());
+    meshopt_remapIndexBuffer(result.indices.data(), result.indices.data(), result.indices.size(), remap.data());
     meshopt_remapVertexBuffer(result.positions.data(), result.positions.data(), result.positions.size(), sizeof(Position), remap.data());
     meshopt_remapVertexBuffer(result.attributes.data(), result.attributes.data(), result.attributes.size(), sizeof(VertexAttributes), remap.data());
 
-    result.lods[0].shadow_indices.resize(result.lods[0].indices.size());
+    result.lods[0].indices = IndexSpan(result.indices.data(), result.indices.size());
+    result.lods[0].shadow_indices = IndexSpan(result.indices.data() + result.lods[0].indices.size(), result.lods[0].indices.size());
+    result.indices.resize(result.indices.size() + result.indices.size());
     meshopt_generateShadowIndexBufferMulti(result.lods[0].shadow_indices.data(),
                                            result.lods[0].indices.data(), result.lods[0].indices.size(),
                                            result.positions.size(),
@@ -155,7 +177,7 @@ inline namespace importer {
     tbb::parallel_for<int>(1, count+1,
       [&result, &streams, &ratio](int i) {
         std::tie(result.lods[i].indices, result.lods[i].shadow_indices) =
-          generate_lod(result.positions, result.lods[0].indices, streams, ratio, i);
+          generate_lod(result.positions, result.lods[0].indices, result.indices, streams, ratio, i);
       }
     );
 

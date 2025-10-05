@@ -159,10 +159,12 @@ inline namespace importer {
     // Process indices
     tbb::flow::function_node<const char *> index_load {
       graph, tbb::flow::unlimited, [&](const char *) {
-        mesh.lods.resize(1);
         auto& idxAccessor = asset.accessors[primitive.indicesAccessor.value()];
-        mesh.lods[0].indices.resize(idxAccessor.count);
-        fastgltf::copyFromAccessor<std::uint32_t>(asset, idxAccessor, mesh.lods[0].indices.data());
+        mesh.indices.resize(idxAccessor.count);
+        fastgltf::copyFromAccessor<std::uint32_t>(asset, idxAccessor, mesh.indices.data());
+
+        mesh.lods.resize(1);
+        mesh.lods[0].indices = IndexSpan(mesh.indices);
       }
     };
     index_load.try_put(nullptr);

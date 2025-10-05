@@ -256,6 +256,12 @@ inline namespace importer {
     using std::vector<Index>::operator=;
   };
 
+  /** \brief Contiguous view on array of triangle indices. */
+  struct IndexSpan : std::span<Index> {
+    using std::span<Index>::span;
+    using std::span<Index>::operator=;
+  };
+
   /** \brief Contiguous array of per-vertex attributes. */
   struct VertexAttributesArray : std::vector<VertexAttributes> {
     using std::vector<VertexAttributes>::vector;
@@ -266,9 +272,17 @@ inline namespace importer {
   struct Mesh {
     /** \brief One level-of-detail of mesh indices. */
     struct LOD {
-      IndexArray indices;
-      IndexArray shadow_indices;
+      IndexSpan indices;
+      IndexSpan shadow_indices;
     };
+
+    PositionArray positions;
+    IndexArray indices;
+    VertexAttributesArray attributes;
+    std::vector<LOD> lods;
+    std::vector<Transform> transforms;
+    std::string name;
+    std::size_t material;
 
     static inline constexpr std::array vertex_input_attribute_descriptions {
       vk::VertexInputAttributeDescription {
@@ -362,13 +376,6 @@ inline namespace importer {
       
       "Vertex input attribute descriptions do not match actual struct layout and alignment"
     );
-
-    PositionArray positions;
-    VertexAttributesArray attributes;
-    std::vector<LOD> lods;
-    std::vector<Transform> transforms;
-    std::string name;
-    std::size_t material;
   };
 
 
