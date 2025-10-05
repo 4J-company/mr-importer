@@ -243,7 +243,6 @@ inline namespace importer {
     mr::Vec2f texcoord;
   };
 
-  // mesh-related data
   /** \brief Contiguous array of vertex positions. */
   struct PositionArray : std::vector<Position> {
     using std::vector<Position>::vector;
@@ -459,13 +458,26 @@ inline namespace importer {
 
   // TODO: animation-related data
 
+  template <typename T>
+  struct SizedUniqueArray : public std::unique_ptr<T[]> {
+    using std::unique_ptr<T[]>::unique_ptr;
+    using std::unique_ptr<T[]>::operator=;
+
+  private:
+    size_t _size = 0;
+
+  public:
+    size_t size() const noexcept { return _size; }
+    void size(size_t size) noexcept { _size = size; }
+  };
+
   /**
    * \brief Compiled shader artifact.
    *
    * Holds backend-specific code (SPIR-V) produced by \ref compile.
    */
   struct Shader {
-    Slang::ComPtr<slang::IBlob> spirv;
+    SizedUniqueArray<const std::byte> spirv;
 
     Shader() = default;
     /** \brief Construct and compile the shader at the given path. */

@@ -32,7 +32,7 @@ inline namespace importer {
     }
     else {
       MR_ERROR(" Failed to compile {}", path.string());
-      MR_ERROR("\t\t{}", res.error()->getBufferPointer());
+      MR_ERROR("\t\t{}", (char*)res.error()->getBufferPointer());
       return std::nullopt;
     }
 
@@ -51,7 +51,7 @@ inline namespace importer {
     }
     else {
       MR_ERROR(" Failed to compose a program {}", path.string());
-      MR_ERROR("\t\t{}", res.error()->getBufferPointer());
+      MR_ERROR("\t\t{}", (char*)res.error()->getBufferPointer());
       return std::nullopt;
     }
 
@@ -61,17 +61,21 @@ inline namespace importer {
     }
     else {
       MR_ERROR(" Failed to link a program {}", path.string());
-      MR_ERROR("\t\t{}", res.error()->getBufferPointer());
+      MR_ERROR("\t\t{}", (char*)res.error()->getBufferPointer());
       return std::nullopt;
     }
 
     Shader shader;
     if (auto res = get_target_code(linked); res.has_value()) {
-      shader.spirv = std::move(res.value());
+      auto comptr = std::move(res.value());
+      auto ptr = comptr.detach();
+      
+      shader.spirv.reset((std::byte*)ptr->getBufferPointer());
+      shader.spirv.size(ptr->getBufferSize());
     }
     else {
       MR_ERROR(" Failed to get target code from a program {}", path.string());
-      MR_ERROR("\t\t{}", res.error()->getBufferPointer());
+      MR_ERROR("\t\t{}", (char*)res.error()->getBufferPointer());
       return std::nullopt;
     }
 

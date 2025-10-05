@@ -11,4 +11,6 @@ int main(int argc, char **argv) {
   }
 
   auto handle = mr::Manager<mr::Shader>::get().create("id", std::filesystem::path(argv[1]));
+  printf("Pointer: %p\n", handle->spirv.get());
+  printf("Size: %zu\n", handle->spirv.size());
 }
