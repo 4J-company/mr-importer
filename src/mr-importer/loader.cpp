@@ -27,14 +27,13 @@ inline namespace importer {
     return place_for_crime.target.data();
   }
 
-
   /**
    * Parse a glTF file into a fastgltf::Asset.
    *
    * On IO or parse error, logs an error with the fastgltf code and returns
    * std::nullopt. Uses LoadExternalBuffers/Images to resolve external data.
    */
-  static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &path)
+  static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &dir, const std::filesystem::path &path)
   {
     using namespace fastgltf;
 
@@ -46,15 +45,18 @@ inline namespace importer {
     }
 
     auto extensions = fastgltf::Extensions::KHR_lights_punctual
+                    | fastgltf::Extensions::MSFT_texture_dds
+                    | fastgltf::Extensions::MSFT_packing_occlusionRoughnessMetallic
                     | fastgltf::Extensions::None
                     ;
     Parser parser(extensions);
     auto options = fastgltf::Options::LoadExternalBuffers
-                 | fastgltf::Options::LoadExternalImages
                  | fastgltf::Options::DontRequireValidAssetMember
                  ;
     
-    auto [error, asset] = parser.loadGltf(data, path.parent_path(), options);
+    MR_DEBUG("Loading from directory {}", dir.string());
+
+    auto [error, asset] = parser.loadGltf(data, dir, options);
     if (error != Error::None) {
       MR_ERROR("Failed to parse GLTF file\n"
                "\t\t{}: {}", getErrorName(error), getErrorMessage(error));
@@ -237,7 +239,7 @@ inline namespace importer {
    * Supports URI, embedded vector, and buffer view sources. Returns an
    * ImageData with owned memory; logs warnings for unexpected sources.
    */
-  static std::optional<ImageData> get_image_from_gltf(const fastgltf::Asset &asset, const fastgltf::Image &image)
+  static std::optional<ImageData> get_image_from_gltf(const std::filesystem::path& directory, const fastgltf::Asset &asset, const fastgltf::Image &image)
   {
     ImageData new_image {};
     int nrChannels = -1;
@@ -254,11 +256,11 @@ inline namespace importer {
               " - we don't support that (local files only)",
               filePath.uri.c_str());
 
-          std::filesystem::path absolute_path = std::filesystem::current_path() / filePath.uri.fspath();
+          std::filesystem::path absolute_path = directory / filePath.uri.fspath();
           const std::string path = std::move(absolute_path).string();
 
           std::byte *image_pixels = nullptr;
-          if (filePath.mimeType == fastgltf::MimeType::DDS) {
+          if (filePath.mimeType == fastgltf::MimeType::DDS || filePath.uri.fspath().extension() == ".dds") {
             dds::Image image;
             dds::ReadResult res = dds::readFile(path, &image);
             ASSERT(res == dds::ReadResult::Success, "Unable to parse DDS image", res);
@@ -272,6 +274,7 @@ inline namespace importer {
             new_image.mip_level = image.mipmaps.size();
 
             image_pixels = (std::byte*)steal_memory(image.data);
+            new_image.pixels.reset(image_pixels);
             ASSERT(new_image.pixels.get() != nullptr, "Couldn't allocate pixels array");
           }
           else {
@@ -391,6 +394,7 @@ inline namespace importer {
    * (e.g., unsupported formats). Does not throw.
    */
   static std::expected<TextureData, std::string_view> get_texture_from_gltf(
+      const std::filesystem::path& directory,
       fastgltf::Asset &asset,
       TextureType type,
       const fastgltf::TextureInfo &texinfo)
@@ -410,7 +414,7 @@ inline namespace importer {
     }
 
     fastgltf::Image &img = asset.images[img_idx];
-    ImageData img_data = *ASSERT_VAL(get_image_from_gltf(asset, img));
+    ImageData img_data = *ASSERT_VAL(get_image_from_gltf(directory, asset, img));
 
     TextureData res;
     res.image = std::move(img_data);
@@ -433,14 +437,16 @@ inline namespace importer {
    * Transfers PBR factors and attempts to load referenced textures; logs
    * errors/warnings for failed texture loads and continues gracefully.
    */
-  static std::vector<MaterialData> get_materials_from_asset(fastgltf::Asset *asset) {
+  static std::vector<MaterialData> get_materials_from_asset(
+      const std::filesystem::path &directory,
+      fastgltf::Asset *asset) {
     ASSERT(asset);
 
     std::vector<MaterialData> materials;
     materials.resize(asset->materials.size());
 
     tbb::parallel_for(0uz, asset->materials.size(),
-      [&asset, &materials] (size_t i) {
+      [&asset, &materials, &directory] (size_t i) {
         fastgltf::Material &src = asset->materials[i];
         MaterialData       &dst = materials[i];
 
@@ -452,7 +458,7 @@ inline namespace importer {
         dst.constants.emissive_strength = src.emissiveStrength;
 
         if (src.pbrData.baseColorTexture.has_value()) {
-          auto exp = get_texture_from_gltf(*asset, TextureType::BaseColor, src.pbrData.baseColorTexture.value());
+          auto exp = get_texture_from_gltf(directory, *asset, TextureType::BaseColor, src.pbrData.baseColorTexture.value());
           if (exp.has_value()) {
             dst.textures.emplace_back(std::move(exp.value()));
           }
@@ -462,7 +468,7 @@ inline namespace importer {
         }
 
         if (src.normalTexture.has_value()) {
-          auto exp = get_texture_from_gltf(*asset, TextureType::NormalMap, src.normalTexture.value());
+          auto exp = get_texture_from_gltf(directory, *asset, TextureType::NormalMap, src.normalTexture.value());
           if (exp.has_value()) {
             dst.textures.emplace_back(std::move(exp.value()));
           }
@@ -474,6 +480,7 @@ inline namespace importer {
         if (src.packedOcclusionRoughnessMetallicTextures &&
             src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture.has_value()) {
           auto exp = get_texture_from_gltf(
+            directory,
             *asset,
             TextureType::OcclusionRoughnessMetallic,
             src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture.value()
@@ -487,6 +494,7 @@ inline namespace importer {
         }
         else if (src.pbrData.metallicRoughnessTexture.has_value()) {
           auto exp = get_texture_from_gltf(
+            directory,
             *asset,
             TextureType::RoughnessMetallic,
             src.pbrData.metallicRoughnessTexture.value()
@@ -500,7 +508,7 @@ inline namespace importer {
           }
 
           if (src.occlusionTexture.has_value()) {
-            auto exp = get_texture_from_gltf(*asset, TextureType::OcclusionMap, src.occlusionTexture.value());
+            auto exp = get_texture_from_gltf(directory, *asset, TextureType::OcclusionMap, src.occlusionTexture.value());
             if (exp.has_value()) {
               dst.textures.emplace_back(std::move(exp.value()));
             }
@@ -511,7 +519,7 @@ inline namespace importer {
         }
 
         if (src.emissiveTexture.has_value()) {
-          auto exp = get_texture_from_gltf(*asset, TextureType::EmissiveColor, src.emissiveTexture.value());
+          auto exp = get_texture_from_gltf(directory, *asset, TextureType::EmissiveColor, src.emissiveTexture.value());
           if (exp.has_value()) {
             dst.textures.emplace_back(std::move(exp.value()));
           }
@@ -530,7 +538,8 @@ inline namespace importer {
    * Returns std::nullopt on parse or IO errors; logs details via MR_ logging.
    */
   std::optional<Model> load(std::filesystem::path path) {
-    std::optional<fastgltf::Asset> asset = get_asset_from_path(path);
+    std::filesystem::path dir = path.parent_path();
+    std::optional<fastgltf::Asset> asset = get_asset_from_path(dir, path);
     if (!asset) {
       return std::nullopt;
     }
@@ -547,8 +556,8 @@ inline namespace importer {
     meshes_load.try_put(&asset.value());
 
     tbb::flow::function_node<fastgltf::Asset*> materials_load {
-      graph, tbb::flow::unlimited, [&res](fastgltf::Asset* asset) {
-        res.materials = get_materials_from_asset(asset);
+      graph, tbb::flow::unlimited, [&res, &dir](fastgltf::Asset* asset) {
+        res.materials = get_materials_from_asset(dir, asset);
       }
     };
     materials_load.try_put(&asset.value());
