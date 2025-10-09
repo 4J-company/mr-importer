@@ -22,6 +22,6 @@ inline namespace importer {
    * \param options Import behavior flags, see \ref Options.
    * \return Imported \ref Model or std::nullopt if loading failed.
    */
-  std::optional<Model> import(const std::filesystem::path& path, uint32_t options = Options::All);
+  std::optional<Model> import(const std::filesystem::path& path, Options options = Options::All);
 } // namespace importer
 } // namespace mr

@@ -6,6 +6,7 @@
  */
 
 #include "assets.hpp"
+#include "options.hpp"
 
 namespace mr {
 inline namespace importer {
@@ -14,6 +15,6 @@ inline namespace importer {
    * \param path Path to the source file (e.g. glTF).
    * \return Loaded \ref Model on success, or std::nullopt on failure.
    */
-  std::optional<Model> load(std::filesystem::path path);
+  std::optional<Model> load(std::filesystem::path path, Options options);
 }
 } // namespace mr

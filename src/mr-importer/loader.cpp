@@ -387,6 +387,7 @@ inline namespace importer {
    */
   static std::expected<TextureData, std::string_view> get_texture_from_gltf(
       const std::filesystem::path& directory,
+      Options options,
       fastgltf::Asset &asset,
       TextureType type,
       const fastgltf::TextureInfo &texinfo)
@@ -398,7 +399,7 @@ inline namespace importer {
     if (tex.imageIndex.has_value()) {
       img_idx = tex.imageIndex.value();
     }
-    if (tex.ddsImageIndex.has_value()) {
+    if (tex.ddsImageIndex.has_value() && (!(options & Options::PreferUncompressed) || img_idx == ~0z)) {
       img_idx = tex.ddsImageIndex.value();
     }
     if (img_idx == ~0z) {
@@ -433,14 +434,15 @@ inline namespace importer {
    */
   static std::vector<MaterialData> get_materials_from_asset(
       const std::filesystem::path &directory,
-      fastgltf::Asset *asset) {
+      fastgltf::Asset *asset,
+      Options options) {
     ASSERT(asset);
 
     std::vector<MaterialData> materials;
     materials.resize(asset->materials.size());
 
     tbb::parallel_for(0uz, asset->materials.size(),
-      [&asset, &materials, &directory] (size_t i) {
+      [&asset, &materials, &directory, &options] (size_t i) {
         fastgltf::Material &src = asset->materials[i];
         MaterialData       &dst = materials[i];
 
@@ -452,7 +454,7 @@ inline namespace importer {
         dst.constants.emissive_strength = src.emissiveStrength;
 
         if (src.pbrData.baseColorTexture.has_value()) {
-          auto exp = get_texture_from_gltf(directory, *asset, TextureType::BaseColor, src.pbrData.baseColorTexture.value());
+          auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::BaseColor, src.pbrData.baseColorTexture.value());
           if (exp.has_value()) {
             dst.textures.emplace_back(std::move(exp.value()));
           }
@@ -462,7 +464,7 @@ inline namespace importer {
         }
 
         if (src.normalTexture.has_value()) {
-          auto exp = get_texture_from_gltf(directory, *asset, TextureType::NormalMap, src.normalTexture.value());
+          auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::NormalMap, src.normalTexture.value());
           if (exp.has_value()) {
             dst.textures.emplace_back(std::move(exp.value()));
           }
@@ -475,6 +477,7 @@ inline namespace importer {
             src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture.has_value()) {
           auto exp = get_texture_from_gltf(
             directory,
+            options,
             *asset,
             TextureType::OcclusionRoughnessMetallic,
             src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture.value()
@@ -489,6 +492,7 @@ inline namespace importer {
         else if (src.pbrData.metallicRoughnessTexture.has_value()) {
           auto exp = get_texture_from_gltf(
             directory,
+            options,
             *asset,
             TextureType::RoughnessMetallic,
             src.pbrData.metallicRoughnessTexture.value()
@@ -502,7 +506,7 @@ inline namespace importer {
           }
 
           if (src.occlusionTexture.has_value()) {
-            auto exp = get_texture_from_gltf(directory, *asset, TextureType::OcclusionMap, src.occlusionTexture.value());
+            auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::OcclusionMap, src.occlusionTexture.value());
             if (exp.has_value()) {
               dst.textures.emplace_back(std::move(exp.value()));
             }
@@ -513,7 +517,7 @@ inline namespace importer {
         }
 
         if (src.emissiveTexture.has_value()) {
-          auto exp = get_texture_from_gltf(directory, *asset, TextureType::EmissiveColor, src.emissiveTexture.value());
+          auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::EmissiveColor, src.emissiveTexture.value());
           if (exp.has_value()) {
             dst.textures.emplace_back(std::move(exp.value()));
           }
@@ -531,7 +535,7 @@ inline namespace importer {
    * Load a source asset (currently glTF) and convert it into runtime \ref Model.
    * Returns std::nullopt on parse or IO errors; logs details via MR_ logging.
    */
-  std::optional<Model> load(std::filesystem::path path) {
+  std::optional<Model> load(std::filesystem::path path, Options options) {
     std::filesystem::path dir = path.parent_path();
     std::optional<fastgltf::Asset> asset = get_asset_from_path(dir, path);
     if (!asset) {
@@ -550,8 +554,8 @@ inline namespace importer {
     meshes_load.try_put(&asset.value());
 
     tbb::flow::function_node<fastgltf::Asset*> materials_load {
-      graph, tbb::flow::unlimited, [&res, &dir](fastgltf::Asset* asset) {
-        res.materials = get_materials_from_asset(dir, asset);
+      graph, tbb::flow::unlimited, [&res, &dir, &options](fastgltf::Asset* asset) {
+        res.materials = get_materials_from_asset(dir, asset, options);
       }
     };
     materials_load.try_put(&asset.value());

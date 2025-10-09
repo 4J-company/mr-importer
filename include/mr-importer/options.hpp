@@ -15,6 +15,8 @@ inline namespace importer {
     None = 0u,
     /** \brief Run mesh optimization passes and generate LODs. */
     OptimizeMeshes = 1 << 0,
+    /** \brief Prefer BCn over non-compressed formats. */
+    PreferUncompressed = 1 << 1,
     /** \brief Enable all available import behaviors. */
     All = ~None,
   };

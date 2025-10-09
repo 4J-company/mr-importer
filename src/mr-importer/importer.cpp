@@ -12,9 +12,9 @@ inline namespace importer {
    * \param options Import behavior flags, see \ref Options.
    * \return Imported \ref Model or std::nullopt if loading failed.
    */
-  std::optional<Model> import(const std::filesystem::path& path, uint32_t options)
+  std::optional<Model> import(const std::filesystem::path& path, Options options)
   {
-    std::optional<Model> asset = load(path);
+    std::optional<Model> asset = load(path, options);
 
     if (!asset) {
       return std::nullopt;
