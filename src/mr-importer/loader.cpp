@@ -16,17 +16,6 @@
 
 namespace mr {
 inline namespace importer {
-  template <typename T>
-  T* steal_memory(std::vector<T>& victim)
-  {
-    union Theft
-    {
-      std::vector<T> target;
-      ~Theft() {}
-    } place_for_crime = {std::move(victim)};
-    return place_for_crime.target.data();
-  }
-
   /**
    * Parse a glTF file into a fastgltf::Asset.
    *
@@ -273,9 +262,10 @@ inline namespace importer {
             new_image.bytes_per_pixel = image.data.size() / image.width / image.height;
             new_image.mip_level = image.mipmaps.size();
 
-            image_pixels = (std::byte*)steal_memory(image.data);
-            new_image.pixels.reset(image_pixels);
+            new_image.pixels = std::make_unique_for_overwrite<std::byte[]>(image.data.size());
             ASSERT(new_image.pixels.get() != nullptr, "Couldn't allocate pixels array");
+
+            std::memcpy(new_image.pixels.get(), image.data.data(), image.data.size());
 
             nrChannels = new_image.bytes_per_pixel; // assume each channel is a single byte
           }
@@ -293,12 +283,12 @@ inline namespace importer {
             else if (nrChannels == 1) {
               new_image.format = vk::Format::eR8Uint;
             }
+            new_image.pixels.reset(image_pixels);
           }
           ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
           ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
           ASSERT(nrChannels > 0, "Sanity check failed", image.name, path.c_str());
 
-          new_image.pixels.reset(image_pixels);
           new_image.depth = 1;
         },
         [&](const fastgltf::sources::Array& array) {
@@ -416,12 +406,14 @@ inline namespace importer {
     }
 
     fastgltf::Image &img = asset.images[img_idx];
-    ImageData img_data = *ASSERT_VAL(get_image_from_gltf(directory, asset, img));
+    std::optional<ImageData> img_data_opt = get_image_from_gltf(directory, asset, img);
+    ASSERT(img_data_opt.has_value(), "Unable to load image");
 
-    TextureData res;
-    res.image = std::move(img_data);
-    res.type = type;
-    return res;
+    return TextureData(
+      std::move(img_data_opt.value()),
+      type,
+      {}
+    );
   }
 
   /** Convert normalized vec4 to Color. */

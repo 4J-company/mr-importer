@@ -391,8 +391,11 @@ inline namespace importer {
     vk::Format format = vk::Format::eR8G8B8Uint;
 
     ImageData() = default;
+    ~ImageData() noexcept = default;
     ImageData(ImageData&&) noexcept = default;
     ImageData& operator=(ImageData&&) noexcept = default;
+    ImageData(const ImageData&) noexcept = delete;
+    ImageData& operator=(const ImageData&) noexcept = delete;
 
     uint32_t pixel_byte_size() const noexcept;
     constexpr uint32_t num_of_pixels() const noexcept { return width * height; }
@@ -425,8 +428,12 @@ inline namespace importer {
     SamplerData sampler;
 
     TextureData() = default;
+    TextureData(ImageData &&image, TextureType type, SamplerData sampler)
+      : image(std::move(image)), type(type), sampler(sampler) {}
     TextureData(TextureData&&) noexcept = default;
     TextureData& operator=(TextureData&&) noexcept = default;
+    TextureData(const TextureData&) noexcept = delete;
+    TextureData& operator=(const TextureData&) noexcept = delete;
   };
 
   /** \brief Minimal physically-based material description. */
@@ -449,6 +456,8 @@ inline namespace importer {
     MaterialData() = default;
     MaterialData(MaterialData&&) noexcept = default;
     MaterialData& operator=(MaterialData&&) noexcept = default;
+    MaterialData(const MaterialData&) noexcept = delete;
+    MaterialData& operator=(const MaterialData&) noexcept = delete;
 
     constexpr std::span<const std::byte, constants_bytesize> constants_data() const noexcept {
       return std::span<const std::byte, constants_bytesize> {
