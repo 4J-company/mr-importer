@@ -10,6 +10,8 @@
 #include <vulkan/vulkan.hpp>
 
 #include <mr-utils/assert.hpp>
+#include <fstream> // TODO: place it insice <mr-utils/misc.hpp>
+#include <mr-utils/misc.hpp>
 
 #include <mr-math/math.hpp>
 

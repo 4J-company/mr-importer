@@ -387,6 +387,7 @@ inline namespace importer {
     int32_t height = 0;
     int32_t depth = 1;
     int32_t mip_level = 1;
+    int32_t bytes_per_pixel = -1;
     vk::Format format = vk::Format::eR8G8B8Uint;
 
     ImageData() = default;
@@ -396,6 +397,7 @@ inline namespace importer {
     uint32_t pixel_byte_size() const noexcept;
     constexpr uint32_t num_of_pixels() const noexcept { return width * height; }
     constexpr uint32_t byte_size() const noexcept { return num_of_pixels() * pixel_byte_size(); }
+    constexpr mr::Extent extent() const noexcept { return {uint32_t(width), uint32_t(height)}; }
   };
 
   /** \brief Texture sampler settings placeholder. */

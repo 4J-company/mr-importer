@@ -230,7 +230,7 @@ inline namespace importer {
 
   uint32_t ImageData::pixel_byte_size() const noexcept
   {
-    return format_byte_size(format);
+    return bytes_per_pixel == -1 ? format_byte_size(format) : bytes_per_pixel;
   }
 
   /**
@@ -270,12 +270,14 @@ inline namespace importer {
             new_image.height = image.height;
             new_image.depth = image.arraySize;
             new_image.format = (vk::Format)dds::getVulkanFormat(image.format, image.supportsAlpha);
-            nrChannels = image.data.size() / image.width / image.height; // assume each channel is a single byte
+            new_image.bytes_per_pixel = image.data.size() / image.width / image.height;
             new_image.mip_level = image.mipmaps.size();
 
             image_pixels = (std::byte*)steal_memory(image.data);
             new_image.pixels.reset(image_pixels);
             ASSERT(new_image.pixels.get() != nullptr, "Couldn't allocate pixels array");
+
+            nrChannels = new_image.bytes_per_pixel; // assume each channel is a single byte
           }
           else {
             image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &nrChannels, 0);
