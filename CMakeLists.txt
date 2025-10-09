@@ -10,7 +10,7 @@ option(MR_IMPORTER_BUILD_EXAMPLES "Whether examples are built" OFF)
 
 project(
   ${MR_IMPORTER_PROJECT_NAME}
-  VERSION 2.1.1
+  VERSION 2.2.4
   LANGUAGES CXX
 )
 
