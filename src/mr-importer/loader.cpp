@@ -222,16 +222,53 @@ inline namespace importer {
     return bytes_per_pixel == -1 ? format_byte_size(format) : bytes_per_pixel;
   }
 
+  static void resize_image(
+      ImageData &image,
+      size_t component_number,
+      size_t component_size,
+      size_t desired_component_number)
+  {
+    if (desired_component_number == component_number) {
+      return;
+    }
+
+    size_t pixel_size = image.pixel_byte_size();
+    size_t pixel_count = image.num_of_pixels();
+
+    size_t desired_pixel_size = desired_component_number * component_size;
+
+    size_t desired_byte_size = image.byte_size() / component_number * desired_component_number;
+    std::unique_ptr<std::byte[]> new_ptr = std::make_unique<std::byte[]>(desired_byte_size);
+
+    for (int i = 0; i < pixel_count; i++) {
+      size_t pixel_byte_offset = i * pixel_size;
+      size_t desired_pixel_byte_offset = i * desired_pixel_size;
+      for (int j = 0; j < std::min(component_number, desired_component_number); j++) {
+        for (int k = 0; k < component_size; k++) {
+          new_ptr[desired_pixel_byte_offset + j * component_size + k] = image.pixels[pixel_byte_offset + j * component_size + k];
+        }
+      }
+    }
+
+    image.pixels = std::move(new_ptr);
+
+    int offset = 0;
+    for (int i = 0; i < image.mips.size(); i++) {
+      size_t desired_mip_size = image.mips[i].size() / component_number * desired_component_number;
+      image.mips[i] = {image.pixels.get() + offset, desired_mip_size};
+      offset += desired_mip_size;
+    }
+  }
+
   /**
    * Decode a glTF image into linear RGBA float pixels using stb_image.
    *
    * Supports URI, embedded vector, and buffer view sources. Returns an
    * ImageData with owned memory; logs warnings for unexpected sources.
    */
-  static std::optional<ImageData> get_image_from_gltf(const std::filesystem::path& directory, const fastgltf::Asset &asset, const fastgltf::Image &image)
+  static std::optional<ImageData> get_image_from_gltf(const std::filesystem::path& directory, Options options, const fastgltf::Asset &asset, const fastgltf::Image &image)
   {
     ImageData new_image {};
-    int nrChannels = -1;
 
     std::visit(
       fastgltf::visitor {
@@ -253,89 +290,50 @@ inline namespace importer {
             dds::Image image;
             dds::ReadResult res = dds::readFile(path, &image);
             ASSERT(res == dds::ReadResult::Success, "Unable to parse DDS image", res);
-            ASSERT(image.data.size() > 0, "Unable to load DDS image", res);
+            ASSERT(image.data.get() != nullptr, "Unable to load DDS image", res);
+            ASSERT(dds::getBitsPerPixel(image.format) % 8 == 0,
+                "DDS image format bits_per_pixel % 8 != 0. "
+                "To handle such cases you'd need to change public API from byte_size to bit_size");
 
             new_image.width = image.width;
             new_image.height = image.height;
             new_image.depth = image.arraySize;
             new_image.format = (vk::Format)dds::getVulkanFormat(image.format, image.supportsAlpha);
-            new_image.bytes_per_pixel = image.data.size() / image.width / image.height;
-            new_image.mip_level = image.mipmaps.size();
+            new_image.bytes_per_pixel = dds::getBitsPerPixel(image.format) / 8;
 
-            new_image.pixels = std::make_unique_for_overwrite<std::byte[]>(image.data.size());
-            ASSERT(new_image.pixels.get() != nullptr, "Couldn't allocate pixels array");
-
-            std::memcpy(new_image.pixels.get(), image.data.data(), image.data.size());
-
-            nrChannels = new_image.bytes_per_pixel; // assume each channel is a single byte
+            new_image.pixels.reset((std::byte*)image.data.release());
+            for (auto &mip : image.mipmaps) {
+              new_image.mips.emplace_back(std::as_bytes(mip));
+            }
           }
           else {
-            image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &nrChannels, 0);
-            if (nrChannels == 4) {
-              new_image.format = vk::Format::eR8G8B8A8Uint;
-            }
-            else if (nrChannels == 3) {
-              new_image.format = vk::Format::eR8G8B8Uint;
-            }
-            else if (nrChannels == 2) {
-              new_image.format = vk::Format::eR8G8Uint;
-            }
-            else if (nrChannels == 1) {
-              new_image.format = vk::Format::eR8Uint;
-            }
+            image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
             new_image.pixels.reset(image_pixels);
+            new_image.mips.emplace_back(image_pixels, new_image.byte_size());
           }
           ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
           ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
-          ASSERT(nrChannels > 0, "Sanity check failed", image.name, path.c_str());
-
-          new_image.depth = 1;
+          ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
         },
         [&](const fastgltf::sources::Array& array) {
           std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)array.bytes.data(),
-              static_cast<int>(array.bytes.size()), &new_image.width, &new_image.height, &nrChannels, 0);
+              static_cast<int>(array.bytes.size()), &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
           ASSERT(new_image.width > 0, "Sanity check failed", image.name);
           ASSERT(new_image.height > 0, "Sanity check failed", image.name);
-          ASSERT(nrChannels > 0, "Sanity check failed", image.name);
-
-          if (nrChannels == 4) {
-            new_image.format = vk::Format::eR8G8B8A8Uint;
-          }
-          else if (nrChannels == 3) {
-            new_image.format = vk::Format::eR8G8B8Uint;
-          }
-          else if (nrChannels == 2) {
-            new_image.format = vk::Format::eR8G8Uint;
-          }
-          else if (nrChannels == 1) {
-            new_image.format = vk::Format::eR8Uint;
-          }
+          ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
 
           new_image.pixels.reset(image_pixels);
-          new_image.depth = 1;
+          new_image.mips.emplace_back(image_pixels, new_image.byte_size());
         },
         [&](const fastgltf::sources::Vector& vector) {
           std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)vector.bytes.data(),
-              static_cast<int>(vector.bytes.size()), &new_image.width, &new_image.height, &nrChannels, 0);
+              static_cast<int>(vector.bytes.size()), &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
           ASSERT(new_image.width > 0, "Sanity check failed", image.name);
           ASSERT(new_image.height > 0, "Sanity check failed", image.name);
-          ASSERT(nrChannels > 0, "Sanity check failed", image.name);
-
-          if (nrChannels == 4) {
-            new_image.format = vk::Format::eR8G8B8A8Uint;
-          }
-          else if (nrChannels == 3) {
-            new_image.format = vk::Format::eR8G8B8Uint;
-          }
-          else if (nrChannels == 2) {
-            new_image.format = vk::Format::eR8G8Uint;
-          }
-          else if (nrChannels == 1) {
-            new_image.format = vk::Format::eR8Uint;
-          }
+          ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
 
           new_image.pixels.reset(image_pixels);
-          new_image.depth = 1;
+          new_image.mips.emplace_back(image_pixels, new_image.byte_size());
         },
         [&](const fastgltf::sources::BufferView& view) {
           auto& bufferView = asset.bufferViews[view.bufferViewIndex];
@@ -348,31 +346,61 @@ inline namespace importer {
             [&](fastgltf::sources::Vector& vector) {
             std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
                                                         static_cast<int>(bufferView.byteLength),
-                                                        &new_image.width, &new_image.height, &nrChannels, 0);
+                                                        &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
               ASSERT(new_image.width > 0, "Sanity check failed", image.name);
               ASSERT(new_image.height > 0, "Sanity check failed", image.name);
-              ASSERT(nrChannels > 0, "Sanity check failed", image.name);
-
-              if (nrChannels == 4) {
-                new_image.format = vk::Format::eR8G8B8A8Uint;
-              }
-              else if (nrChannels == 3) {
-                new_image.format = vk::Format::eR8G8B8Uint;
-              }
-              else if (nrChannels == 2) {
-                new_image.format = vk::Format::eR8G8Uint;
-              }
-              else if (nrChannels == 1) {
-                new_image.format = vk::Format::eR8Uint;
-              }
+              ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
 
               new_image.pixels.reset(image_pixels);
-              new_image.depth = 1;
+              new_image.mips.emplace_back(image_pixels, new_image.byte_size());
             }
           }, buffer.data);
         },
       },
       image.data);
+
+    if (new_image.format == vk::Format()) {
+      switch (new_image.bytes_per_pixel) {
+        case 1:
+          if (!(options & Options::Allow1ComponentImages)) {
+            MR_INFO("Resizing an image from 1-component to 2-component. Consider doing it offline");
+            resize_image(new_image, 1, 1, 2);
+          }
+          else {
+            new_image.format = vk::Format::eR8Uint;
+            break;
+          }
+        case 2:
+          if (!(options & Options::Allow2ComponentImages)) {
+            MR_INFO("Resizing an image from 2-component to 3-component. Consider doing it offline");
+            resize_image(new_image, 2, 1, 3);
+          }
+          else {
+            new_image.format = vk::Format::eR8G8Uint;
+            break;
+          }
+        case 3:
+          if (!(options & Options::Allow3ComponentImages)) {
+            MR_INFO("Resizing an image from 3-component to 4-component. Consider doing it offline");
+            resize_image(new_image, 3, 1, 4);
+          }
+          else {
+            new_image.format = vk::Format::eR8G8B8Uint;
+            break;
+          }
+        case 4:
+          if (!(options & Options::Allow4ComponentImages)) {
+            MR_ERROR("Disallowing 4-component images makes lossless import impossible. Transfer your images to 3-components (or less) offline!");
+          }
+          else {
+            new_image.format = vk::Format::eR8G8B8A8Uint;
+            break;
+          }
+        default:
+          ASSERT(false, "Failed to determine number of image components", new_image.bytes_per_pixel);
+          break;
+      }
+    }
 
     ASSERT(new_image.pixels.get() != nullptr, "Unexpected error reading image data. Needs investigation", image.name);
 
@@ -407,7 +435,7 @@ inline namespace importer {
     }
 
     fastgltf::Image &img = asset.images[img_idx];
-    std::optional<ImageData> img_data_opt = get_image_from_gltf(directory, asset, img);
+    std::optional<ImageData> img_data_opt = get_image_from_gltf(directory, options, asset, img);
     ASSERT(img_data_opt.has_value(), "Unable to load image");
 
     return TextureData(

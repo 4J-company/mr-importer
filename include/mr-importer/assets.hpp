@@ -4,12 +4,12 @@
 
 namespace mr {
 inline namespace importer {
+
   constexpr uint32_t format_byte_size(vk::Format format)
   {
     uint32_t res = 0;
 
     switch ((VkFormat)format) {
-      case VK_FORMAT_UNDEFINED: res = 0; break;
       case VK_FORMAT_R4G4_UNORM_PACK8: res = 1; break;
       case VK_FORMAT_R4G4B4A4_UNORM_PACK16: res = 2; break;
       case VK_FORMAT_B4G4R4A4_UNORM_PACK16: res = 2; break;
@@ -383,12 +383,12 @@ inline namespace importer {
   struct ImageData {
     // unique ptr because memory is allocated by stb and passed to us
     std::unique_ptr<std::byte[]> pixels;
+    InplaceVector<std::span<const std::byte>, 16> mips;
     int32_t width = 0;
     int32_t height = 0;
     int32_t depth = 1;
-    int32_t mip_level = 1;
     int32_t bytes_per_pixel = -1;
-    vk::Format format = vk::Format::eR8G8B8Uint;
+    vk::Format format {};
 
     ImageData() = default;
     ~ImageData() noexcept = default;

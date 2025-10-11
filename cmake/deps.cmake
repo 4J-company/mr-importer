@@ -13,6 +13,7 @@ find_package(mr-math REQUIRED)
 find_package(mr-utils REQUIRED)
 find_package(mr-manager REQUIRED)
 find_package(VulkanHeaders REQUIRED)
+CPMAddPackage("gh:bemanproject/inplace_vector#b81a3c7")
 set(MR_IMPORTER_PUBLIC_DEPS
   glm::glm
   slang::slang
@@ -20,6 +21,7 @@ set(MR_IMPORTER_PUBLIC_DEPS
   mr-utils::mr-utils
   mr-manager::mr-manager
   vulkan-headers::vulkan-headers
+  beman.inplace_vector
 )
 
 # private dependencies

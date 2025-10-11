@@ -27,7 +27,7 @@ class mr_importerRecipe(ConanFile):
         self.requires("folly/2024.08.12.00")
 
         self.requires("efsw/1.4.1")
-        self.requires("meshoptimizer/0.23")
+        self.requires("meshoptimizer/0.25")
         self.requires("fastgltf/0.8.0")
 
         self.requires("vulkan-headers/1.4.313.0")
