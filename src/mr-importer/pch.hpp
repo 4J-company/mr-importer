@@ -12,6 +12,7 @@
 #include <utility>
 
 // Third-party implementation dependencies
+#define FASTGLTF_ENABLE_DEPRECATED_EXT 1
 #include <fastgltf/core.hpp>
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/math.hpp>

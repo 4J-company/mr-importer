@@ -4,7 +4,7 @@ from conan.tools.build import check_min_cppstd
 
 class mr_importerRecipe(ConanFile):
     name = "mr-importer"
-    version = "2.2.4"
+    version = "2.3.4"
     package_type = "library"
 
     license = "MIT"
@@ -28,6 +28,7 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("efsw/1.4.1")
         self.requires("meshoptimizer/0.25")
+        self.requires("fastgltf/0.9.0-4j")
 
         self.requires("glm/1.0.1")
 
