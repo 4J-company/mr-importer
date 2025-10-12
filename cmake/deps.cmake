@@ -28,14 +28,20 @@ set(MR_IMPORTER_PUBLIC_DEPS
 find_package(fmt REQUIRED)
 find_package(efsw REQUIRED)
 find_package(meshoptimizer REQUIRED)
-find_package(fastgltf REQUIRED)
+CPMAddPackage(
+  NAME fastgltf
+  GITHUB_REPOSITORY spnda/fastgltf
+  GIT_TAG main
+  OPTIONS
+    "FASTGLTF_ENABLE_DEPRECATED_EXT ON"
+)
 find_package(stb REQUIRED)
 find_package(TBB REQUIRED)
 CPMAddPackage("gh:spnda/dds_image#main")
 
 set(MR_IMPORTER_PRIVATE_DEPS
   meshoptimizer::meshoptimizer
-  fastgltf::fastgltf
+  fastgltf
   efsw::efsw
   stb::stb
   fmt::fmt

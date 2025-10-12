@@ -34,6 +34,8 @@ inline namespace importer {
     }
 
     auto extensions = fastgltf::Extensions::KHR_lights_punctual
+                    | fastgltf::Extensions::KHR_materials_pbrSpecularGlossiness
+                    | fastgltf::Extensions::EXT_mesh_gpu_instancing
                     | fastgltf::Extensions::MSFT_texture_dds
                     | fastgltf::Extensions::MSFT_packing_occlusionRoughnessMetallic
                     | fastgltf::Extensions::None
@@ -287,33 +289,37 @@ inline namespace importer {
 
           std::byte *image_pixels = nullptr;
           if (filePath.mimeType == fastgltf::MimeType::DDS || filePath.uri.fspath().extension() == ".dds") {
-            dds::Image image;
-            dds::ReadResult res = dds::readFile(path, &image);
+            dds::Image dds_image;
+            dds::ReadResult res = dds::readFile(path, &dds_image);
             ASSERT(res == dds::ReadResult::Success, "Unable to parse DDS image", res);
-            ASSERT(image.data.get() != nullptr, "Unable to load DDS image", res);
-            ASSERT(dds::getBitsPerPixel(image.format) % 8 == 0,
+            ASSERT(dds_image.data.get() != nullptr, "Unable to load DDS image", res);
+            ASSERT(dds::getBitsPerPixel(dds_image.format) % 8 == 0,
                 "DDS image format bits_per_pixel % 8 != 0. "
                 "To handle such cases you'd need to change public API from byte_size to bit_size");
 
-            new_image.width = image.width;
-            new_image.height = image.height;
-            new_image.depth = image.arraySize;
-            new_image.format = (vk::Format)dds::getVulkanFormat(image.format, image.supportsAlpha);
-            new_image.bytes_per_pixel = dds::getBitsPerPixel(image.format) / 8;
+            new_image.width = dds_image.width;
+            new_image.height = dds_image.height;
+            new_image.depth = dds_image.arraySize;
+            new_image.format = (vk::Format)dds::getVulkanFormat(dds_image.format, dds_image.supportsAlpha);
+            new_image.bytes_per_pixel = dds::getBitsPerPixel(dds_image.format) / 8;
 
-            new_image.pixels.reset((std::byte*)image.data.release());
-            for (auto &mip : image.mipmaps) {
+            new_image.pixels.reset((std::byte*)dds_image.data.release());
+            for (auto &mip : dds_image.mipmaps) {
               new_image.mips.emplace_back(std::as_bytes(mip));
             }
+            ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
+            ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
+            ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
           }
           else {
             image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
+            ASSERT(image_pixels != nullptr, "Sanity check failed", image.name, path.c_str());
+            ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
+            ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
+            ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
             new_image.pixels.reset(image_pixels);
             new_image.mips.emplace_back(image_pixels, new_image.byte_size());
           }
-          ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
-          ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
-          ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
         },
         [&](const fastgltf::sources::Array& array) {
           std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)array.bytes.data(),
@@ -367,7 +373,7 @@ inline namespace importer {
             resize_image(new_image, 1, 1, 2);
           }
           else {
-            new_image.format = vk::Format::eR8Uint;
+            new_image.format = vk::Format::eR8Srgb;
             break;
           }
         case 2:
@@ -376,7 +382,7 @@ inline namespace importer {
             resize_image(new_image, 2, 1, 3);
           }
           else {
-            new_image.format = vk::Format::eR8G8Uint;
+            new_image.format = vk::Format::eR8G8Srgb;
             break;
           }
         case 3:
@@ -385,7 +391,7 @@ inline namespace importer {
             resize_image(new_image, 3, 1, 4);
           }
           else {
-            new_image.format = vk::Format::eR8G8B8Uint;
+            new_image.format = vk::Format::eR8G8B8Srgb;
             break;
           }
         case 4:
@@ -393,7 +399,7 @@ inline namespace importer {
             MR_ERROR("Disallowing 4-component images makes lossless import impossible. Transfer your images to 3-components (or less) offline!");
           }
           else {
-            new_image.format = vk::Format::eR8G8B8A8Uint;
+            new_image.format = vk::Format::eR8G8B8A8Srgb;
             break;
           }
         default:
@@ -483,6 +489,15 @@ inline namespace importer {
 
         if (src.pbrData.baseColorTexture.has_value()) {
           auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::BaseColor, src.pbrData.baseColorTexture.value());
+          if (exp.has_value()) {
+            dst.textures.emplace_back(std::move(exp.value()));
+          }
+          else {
+            MR_ERROR("Loading Base Color texture - ", exp.error());
+          }
+        }
+        else if (src.specularGlossiness.get() && src.specularGlossiness->diffuseTexture.has_value()) {
+          auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::BaseColor, src.specularGlossiness->diffuseTexture.value());
           if (exp.has_value()) {
             dst.textures.emplace_back(std::move(exp.value()));
           }
