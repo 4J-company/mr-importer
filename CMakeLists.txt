@@ -72,7 +72,7 @@ if (MR_IMPORTER_BUILD_EXAMPLES)
   target_link_libraries(mr-importer-shader-example PUBLIC mr-importer-lib)
 endif()
 
-install(TARGETS ${MR_IMPORTER_LIB_NAME} dds_image
+install(TARGETS ${MR_IMPORTER_LIB_NAME} dds_image fastgltf
     EXPORT mr-importer-targets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
