@@ -558,6 +558,21 @@ inline namespace importer {
             }
           }
         }
+        else if (src.specularGlossiness.get() && src.specularGlossiness->specularGlossinessTexture.has_value()) {
+          auto exp = get_texture_from_gltf(
+            directory,
+            options,
+            *asset,
+            TextureType::RoughnessMetallic,
+            src.specularGlossiness->specularGlossinessTexture.value()
+          );
+          if (exp.has_value()) {
+            dst.textures.emplace_back(std::move(exp.value()));
+          }
+          else {
+            MR_ERROR("Loading Specular Glossiness texture - ", exp.error());
+          }
+        }
 
         if (src.emissiveTexture.has_value()) {
           auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::EmissiveColor, src.emissiveTexture.value());
