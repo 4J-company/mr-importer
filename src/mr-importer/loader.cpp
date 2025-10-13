@@ -285,7 +285,6 @@ inline namespace importer {
           std::filesystem::path absolute_path = directory / filePath.uri.fspath();
           const std::string path = std::move(absolute_path).string();
 
-          std::byte *image_pixels = nullptr;
           if (filePath.mimeType == fastgltf::MimeType::DDS || filePath.uri.fspath().extension() == ".dds") {
             dds::Image dds_image;
             dds::ReadResult res = dds::readFile(path, &dds_image);
@@ -328,21 +327,18 @@ inline namespace importer {
                 "Image format bits_per_pixel % 8 != 0. "
                 "To handle such cases you'd need to change public API from byte_size to bit_size");
 
-            image_pixels = (std::byte*)tab.ptr;
-            new_image.width = tab.width;
-            new_image.height = tab.height;
             new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+            new_image.width = tab.width / new_image.bytes_per_pixel;
+            new_image.height = tab.height;
 
             ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
             ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
             ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
-            new_image.pixels.reset(image_pixels);
-            new_image.mips.emplace_back(image_pixels, new_image.byte_size());
+            new_image.pixels.reset((std::byte*)img.pixbuf_mem_owner.release());
+            new_image.mips.emplace_back(new_image.pixels.get(), new_image.byte_size());
           }
         },
         [&](const fastgltf::sources::Array& array) {
-          std::byte *image_pixels = nullptr;
-
           wuffs_aux::DecodeImageCallbacks callbacks;
           wuffs_aux::sync_io::MemoryInput input((const char*)array.bytes.data(), array.bytes.size());
           wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
@@ -357,21 +353,18 @@ inline namespace importer {
               "Image format bits_per_pixel % 8 != 0. "
               "To handle such cases you'd need to change public API from byte_size to bit_size");
 
-          image_pixels = (std::byte*)tab.ptr;
-          new_image.width = tab.width;
-          new_image.height = tab.height;
           new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+          new_image.width = tab.width / new_image.bytes_per_pixel;
+          new_image.height = tab.height;
 
           ASSERT(new_image.width > 0, "Sanity check failed", image.name);
           ASSERT(new_image.height > 0, "Sanity check failed", image.name);
           ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
 
-          new_image.pixels.reset(image_pixels);
-          new_image.mips.emplace_back(image_pixels, new_image.byte_size());
+          new_image.pixels.reset((std::byte*)img.pixbuf_mem_owner.release());
+          new_image.mips.emplace_back((std::byte*)tab.ptr, new_image.byte_size());
         },
         [&](const fastgltf::sources::Vector& vector) {
-          std::byte *image_pixels = nullptr;
-
           wuffs_aux::DecodeImageCallbacks callbacks;
           wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data(), vector.bytes.size());
           wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
@@ -386,17 +379,16 @@ inline namespace importer {
               "Image format bits_per_pixel % 8 != 0. "
               "To handle such cases you'd need to change public API from byte_size to bit_size");
 
-          image_pixels = (std::byte*)tab.ptr;
-          new_image.width = tab.width;
-          new_image.height = tab.height;
           new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+          new_image.width = tab.width / new_image.bytes_per_pixel;
+          new_image.height = tab.height;
 
           ASSERT(new_image.width > 0, "Sanity check failed", image.name);
           ASSERT(new_image.height > 0, "Sanity check failed", image.name);
           ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
 
-          new_image.pixels.reset(image_pixels);
-          new_image.mips.emplace_back(image_pixels, new_image.byte_size());
+          new_image.pixels.reset((std::byte*)img.pixbuf_mem_owner.release());
+          new_image.mips.emplace_back((std::byte*)tab.ptr, new_image.byte_size());
         },
         [&](const fastgltf::sources::BufferView& view) {
           auto& bufferView = asset.bufferViews[view.bufferViewIndex];
@@ -407,8 +399,6 @@ inline namespace importer {
                                          // are already loaded into a vector.
             [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)"); },
             [&](fastgltf::sources::Vector& vector) {
-              std::byte *image_pixels = nullptr;
-
               wuffs_aux::DecodeImageCallbacks callbacks;
               wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data() + bufferView.byteOffset, bufferView.byteLength);
               wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
@@ -423,17 +413,16 @@ inline namespace importer {
                   "Image format bits_per_pixel % 8 != 0. "
                   "To handle such cases you'd need to change public API from byte_size to bit_size");
 
-              image_pixels = (std::byte*)tab.ptr;
-              new_image.width = tab.width;
-              new_image.height = tab.height;
               new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+              new_image.width = tab.width / new_image.bytes_per_pixel;
+              new_image.height = tab.height;
 
               ASSERT(new_image.width > 0, "Sanity check failed", image.name);
               ASSERT(new_image.height > 0, "Sanity check failed", image.name);
               ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
 
-              new_image.pixels.reset(image_pixels);
-              new_image.mips.emplace_back(image_pixels, new_image.byte_size());
+              new_image.pixels.reset((std::byte*)img.pixbuf_mem_owner.release());
+              new_image.mips.emplace_back((std::byte*)tab.ptr, new_image.byte_size());
             }
           }, buffer.data);
         },
@@ -512,7 +501,7 @@ inline namespace importer {
       img_idx = tex.ddsImageIndex.value();
     }
     if (img_idx == ~0z) {
-      return std::unexpected("Texture is in unsupported format (KTX, WEBP, etc)");
+      return std::unexpected("Texture is in unsupported format");
     }
 
     fastgltf::Image &img = asset.images[img_idx];
