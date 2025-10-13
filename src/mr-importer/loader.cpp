@@ -455,7 +455,7 @@ inline namespace importer {
             resize_image(new_image, 3, 1, 4);
           }
           else {
-            new_image.format = vk::Format::eR8G8B8Srgb;
+            new_image.format = vk::Format::eB8G8R8Srgb;
             break;
           }
         case 4:
@@ -463,7 +463,7 @@ inline namespace importer {
             MR_ERROR("Disallowing 4-component images makes lossless import impossible. Transfer your images to 3-components (or less) offline!");
           }
           else {
-            new_image.format = vk::Format::eR8G8B8A8Srgb;
+            new_image.format = vk::Format::eB8G8R8A8Srgb;
             break;
           }
         default:
