@@ -381,7 +381,7 @@ inline namespace importer {
   // material-related data
   /** \brief Raw image data stored as linear RGBA float pixels. */
   struct ImageData {
-    // unique ptr because memory is allocated by stb and passed to us
+    // unique ptr because memory is allocated by the backend and passed to us
     std::unique_ptr<std::byte[]> pixels;
     InplaceVector<std::span<const std::byte>, 16> mips;
     int32_t width = 0;

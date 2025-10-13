@@ -9,7 +9,7 @@ High-level importer focused on pragmatic, real-time graphics needs. It loads glT
   - Overdraw reduction
   - Vertex fetch remapping
 - Automatic multi-LOD generation (with shadow index buffers)
-- Minimal PBR material data and texture loading (via stb_image)
+- Minimal PBR material data and texture loading (via google/wuffs)
 - Simple shader compilation pipeline (via Slang → SPIR-V)
 
 ## Public API Overview
@@ -30,10 +30,10 @@ See inline Doxygen-style comments in headers and source for details.
 - CMake (>= 3.20 recommended)
 - Conan 2.x (for dependency setup) or system-installed dependencies
 
-Runtime/third-party dependencies (managed via Conan in this repo):
-- fastgltf (glTF parsing)
-- meshoptimizer
-- stb_image
+Third-party dependencies (managed via Conan in this repo):
+- spnda/fastgltf (glTF parsing)
+- zeux/meshoptimizer
+- google/suffs
 - glm
 - Slang (shader compiler)
 - mr-utils, mr-manager, mr-math (internal libraries)
@@ -93,7 +93,6 @@ doxygen Doxyfile
 - Hot reloading (efsw)
 - Performance statistics
 - Hierarchical LOD (Batched Multi-Triangulation)
-- Expose `std::span` views where possible
 - Async loading (C++ coroutines)
 
 ## License

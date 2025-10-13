@@ -21,8 +21,6 @@
 
 #include <meshoptimizer.h>
 
-#include <stb_image.h>
-
 // Internal model-renderer dependencies
 #include <mr-manager/manager.hpp>
 #include <mr-utils/log.hpp>

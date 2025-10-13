@@ -3,10 +3,8 @@
  * \brief glTF loading and conversion into runtime asset structures.
  */
 
-#define STBI_FAILURE_USERMSG
-#define STB_IMAGE_STATIC
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#define WUFFS_IMPLEMENTATION
+#include "wuffs-v0.4.c"
 
 #include <dds.hpp>
 
@@ -263,7 +261,7 @@ inline namespace importer {
   }
 
   /**
-   * Decode a glTF image into linear RGBA float pixels using stb_image.
+   * Decode a glTF image.
    *
    * Supports URI, embedded vector, and buffer view sources. Returns an
    * ImageData with owned memory; logs warnings for unexpected sources.
@@ -277,7 +275,7 @@ inline namespace importer {
         [](auto& arg) { ASSERT(false, "Unsupported image source in a GLTF file", arg); },
         [&](const fastgltf::sources::URI& filePath) {
           ASSERT(filePath.fileByteOffset == 0,
-              "Offsets with files are not supported becaues plain STB doesn't support them.",
+              "Offsets with files are not supported becaues plain wuffs' C++ bindings don't support them.",
               filePath.uri.c_str());
           ASSERT(filePath.uri.isLocalPath(),
               "Tried to load an image from absolute path"
@@ -312,8 +310,29 @@ inline namespace importer {
             ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
           }
           else {
-            image_pixels = (std::byte*)stbi_load(path.c_str(), &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
-            ASSERT(image_pixels != nullptr, "Sanity check failed", image.name, path.c_str());
+            std::unique_ptr<FILE, decltype(&fclose)> file (fopen(path.c_str(), "rb"), fclose);
+
+            ASSERT(file.get() != nullptr, "Unable to open image file for reading", path);
+
+            wuffs_aux::DecodeImageCallbacks callbacks;
+            wuffs_aux::sync_io::FileInput input(file.get());
+            wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
+
+            ASSERT(img.error_message.empty(), img.error_message, path);
+            ASSERT(img.pixbuf.pixcfg.is_valid(), "Something is wrong with the image (idk :) )", path);
+
+            wuffs_base__table_u8 tab = img.pixbuf.plane(0);
+            wuffs_base__pixel_format format = img.pixbuf.pixel_format();
+
+            ASSERT(format.bits_per_pixel() % 8 == 0,
+                "Image format bits_per_pixel % 8 != 0. "
+                "To handle such cases you'd need to change public API from byte_size to bit_size");
+
+            image_pixels = (std::byte*)tab.ptr;
+            new_image.width = tab.width;
+            new_image.height = tab.height;
+            new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+
             ASSERT(new_image.width > 0, "Sanity check failed", image.name, path.c_str());
             ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
             ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
@@ -322,8 +341,27 @@ inline namespace importer {
           }
         },
         [&](const fastgltf::sources::Array& array) {
-          std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)array.bytes.data(),
-              static_cast<int>(array.bytes.size()), &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
+          std::byte *image_pixels = nullptr;
+
+          wuffs_aux::DecodeImageCallbacks callbacks;
+          wuffs_aux::sync_io::MemoryInput input((const char*)array.bytes.data(), array.bytes.size());
+          wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
+
+          ASSERT(img.error_message.empty(), img.error_message);
+          ASSERT(img.pixbuf.pixcfg.is_valid(), "Something is wrong with the image (idk :) )");
+
+          wuffs_base__table_u8 tab = img.pixbuf.plane(0);
+          wuffs_base__pixel_format format = img.pixbuf.pixel_format();
+
+          ASSERT(format.bits_per_pixel() % 8 == 0,
+              "Image format bits_per_pixel % 8 != 0. "
+              "To handle such cases you'd need to change public API from byte_size to bit_size");
+
+          image_pixels = (std::byte*)tab.ptr;
+          new_image.width = tab.width;
+          new_image.height = tab.height;
+          new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+
           ASSERT(new_image.width > 0, "Sanity check failed", image.name);
           ASSERT(new_image.height > 0, "Sanity check failed", image.name);
           ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
@@ -332,8 +370,27 @@ inline namespace importer {
           new_image.mips.emplace_back(image_pixels, new_image.byte_size());
         },
         [&](const fastgltf::sources::Vector& vector) {
-          std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)vector.bytes.data(),
-              static_cast<int>(vector.bytes.size()), &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
+          std::byte *image_pixels = nullptr;
+
+          wuffs_aux::DecodeImageCallbacks callbacks;
+          wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data(), vector.bytes.size());
+          wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
+
+          ASSERT(img.error_message.empty(), img.error_message);
+          ASSERT(img.pixbuf.pixcfg.is_valid(), "Something is wrong with the image (idk :) )");
+
+          wuffs_base__table_u8 tab = img.pixbuf.plane(0);
+          wuffs_base__pixel_format format = img.pixbuf.pixel_format();
+
+          ASSERT(format.bits_per_pixel() % 8 == 0,
+              "Image format bits_per_pixel % 8 != 0. "
+              "To handle such cases you'd need to change public API from byte_size to bit_size");
+
+          image_pixels = (std::byte*)tab.ptr;
+          new_image.width = tab.width;
+          new_image.height = tab.height;
+          new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+
           ASSERT(new_image.width > 0, "Sanity check failed", image.name);
           ASSERT(new_image.height > 0, "Sanity check failed", image.name);
           ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
@@ -350,9 +407,27 @@ inline namespace importer {
                                          // are already loaded into a vector.
             [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)"); },
             [&](fastgltf::sources::Vector& vector) {
-            std::byte *image_pixels = (std::byte*)stbi_load_from_memory((uint8_t*)vector.bytes.data() + bufferView.byteOffset,
-                                                        static_cast<int>(bufferView.byteLength),
-                                                        &new_image.width, &new_image.height, &new_image.bytes_per_pixel, 0);
+              std::byte *image_pixels = nullptr;
+
+              wuffs_aux::DecodeImageCallbacks callbacks;
+              wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data() + bufferView.byteOffset, bufferView.byteLength);
+              wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
+
+              ASSERT(img.error_message.empty(), img.error_message);
+              ASSERT(img.pixbuf.pixcfg.is_valid(), "Something is wrong with the image (idk :) )");
+
+              wuffs_base__table_u8 tab = img.pixbuf.plane(0);
+              wuffs_base__pixel_format format = img.pixbuf.pixel_format();
+
+              ASSERT(format.bits_per_pixel() % 8 == 0,
+                  "Image format bits_per_pixel % 8 != 0. "
+                  "To handle such cases you'd need to change public API from byte_size to bit_size");
+
+              image_pixels = (std::byte*)tab.ptr;
+              new_image.width = tab.width;
+              new_image.height = tab.height;
+              new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+
               ASSERT(new_image.width > 0, "Sanity check failed", image.name);
               ASSERT(new_image.height > 0, "Sanity check failed", image.name);
               ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);

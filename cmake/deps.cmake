@@ -29,7 +29,17 @@ find_package(fmt REQUIRED)
 find_package(efsw REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(fastgltf REQUIRED)
-find_package(stb REQUIRED)
+CPMAddPackage(
+  NAME wuffs
+  GITHUB_REPOSITORY google/wuffs-mirror-release-c
+  GIT_TAG main
+  DOWNLOAD_ONLY
+)
+if (${wuffs_ADDED})
+  add_library(wuffs INTERFACE "")
+  target_include_directories(wuffs INTERFACE ${wuffs_SOURCE_DIR}/release/c)
+endif()
+
 find_package(TBB REQUIRED)
 CPMAddPackage("gh:spnda/dds_image#main")
 
@@ -37,8 +47,8 @@ set(MR_IMPORTER_PRIVATE_DEPS
   meshoptimizer::meshoptimizer
   fastgltf::fastgltf
   efsw::efsw
-  stb::stb
   fmt::fmt
   onetbb::onetbb
   dds_image
+  wuffs
 )

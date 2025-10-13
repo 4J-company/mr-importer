@@ -34,8 +34,6 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("slang/2025.10.4")
 
-        self.requires("stb/cci.20240531")
-
         self.requires("onetbb/2022.2.0")
 
         self.requires("mr-math/1.1.4")
