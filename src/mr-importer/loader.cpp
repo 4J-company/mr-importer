@@ -55,6 +55,27 @@ inline namespace importer {
     return std::move(asset);
   }
 
+  static const fastgltf::Accessor & get_accessor_from_attribute(
+    const fastgltf::Asset &asset,
+    const fastgltf::Attribute &attribute)
+  {
+    size_t id = attribute.accessorIndex;
+    ASSERT(id < asset.accessors.size(),
+      "Invalid GLTF file. "
+      "Attribute didn't contain valid accessor index. "
+      "Checkout attribute-accessor indices."
+    );
+
+    const fastgltf::Accessor& accessor = asset.accessors[id];
+    ASSERT(accessor.bufferViewIndex.has_value(),
+      "Invalid GLTF file. "
+      "Accessor didn't contain buffer view. "
+      "Checkout accessor-buffer_view indices."
+    );
+
+    return accessor;
+  }
+
   /**
    * Locate an accessor by attribute name on a primitive and validate its type.
    *
@@ -73,18 +94,7 @@ inline namespace importer {
       MR_WARNING("primitive didn't contain {} attribute", name);
       return std::nullopt;
     }
-    size_t acessor_id = attr->accessorIndex;
-    if (acessor_id >= asset.accessors.size()) {
-      MR_ERROR("primitive didn't contain {} accessor", name);
-      return std::nullopt;
-    }
-    const Accessor& accessor = asset.accessors[acessor_id];
-    if (!accessor.bufferViewIndex.has_value()) {
-      MR_ERROR("primitive didn't contain buffer view");
-      return std::nullopt;
-    }
-
-    return std::ref(accessor);
+    return std::ref(get_accessor_from_attribute(asset, *attr));
   }
 
   /**
@@ -99,7 +109,6 @@ inline namespace importer {
     using namespace fastgltf;
 
     Mesh mesh;
-
 
     tbb::flow::graph graph;
 
@@ -190,6 +199,46 @@ inline namespace importer {
     fastgltf::iterateSceneNodes(*asset, 0, fastgltf::math::fmat4x4(),
       [&](fastgltf::Node& node, fastgltf::math::fmat4x4 matrix) {
         if (node.meshIndex.has_value()) {
+          if (node.instancingAttributes.size() > 0) {
+            std::vector<fastgltf::math::fvec3> translations;
+            const auto& translation_iterator = node.findInstancingAttribute("TRANSLATION");
+            ASSERT(translation_iterator != node.instancingAttributes.cend());
+            const auto& translation_accessor = get_accessor_from_attribute(*asset, *translation_iterator);
+            translations.reserve(translation_accessor.count);
+            fastgltf::iterateAccessor<fastgltf::math::fvec3>(*asset, translation_accessor, [&](fastgltf::math::fvec3 v) {
+              translations.push_back({v.x(), v.y(), v.z()});
+            });
+
+            std::vector<fastgltf::math::fquat> rotations;
+            const auto& rotation_iterator = node.findInstancingAttribute("ROTATION");
+            ASSERT(rotation_iterator != node.instancingAttributes.cend());
+            const auto& rotation_accessor = get_accessor_from_attribute(*asset, *rotation_iterator);
+            rotations.reserve(translation_accessor.count);
+            fastgltf::iterateAccessor<fastgltf::math::fquat>(*asset, rotation_accessor, [&](fastgltf::math::fquat q) {
+              rotations.push_back(q);
+            });
+
+            std::vector<fastgltf::math::fvec3> scales;
+            const auto& scale_iterator = node.findInstancingAttribute("SCALE");
+            ASSERT(scale_iterator != node.instancingAttributes.cend());
+            const auto& scale_accessor = get_accessor_from_attribute(*asset, *scale_iterator);
+            scales.reserve(scale_accessor.count);
+            fastgltf::iterateAccessor<fastgltf::math::fvec3>(*asset, scale_accessor, [&](fastgltf::math::fvec3 v) {
+              scales.push_back({v.x(), v.y(), v.z()});
+            });
+
+            transforms[*node.meshIndex].resize(scales.size());
+            for (const auto &[t, r, s] : std::views::zip(translations, rotations, scales)) {
+              fastgltf::math::fmat4x4 res = scale(rotate(translate(matrix, t), r), s);
+              transforms[*node.meshIndex].push_back({
+                res[0][0], res[1][0], res[2][0], res[3][0],
+                res[0][1], res[1][1], res[2][1], res[3][1],
+                res[0][2], res[1][2], res[2][2], res[3][2],
+                res[0][3], res[1][3], res[2][3], res[3][3],
+              });
+            }
+          }
+
           glm::mat4 t = glm::make_mat4(matrix.data());
           transforms[*node.meshIndex].push_back({
             t[0][0], t[1][0], t[2][0], t[3][0],
@@ -309,7 +358,7 @@ inline namespace importer {
             ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
           }
           else {
-            std::unique_ptr<FILE, decltype(&fclose)> file (fopen(path.c_str(), "rb"), fclose);
+            std::unique_ptr<FILE, int (*)(FILE*)> file (fopen(path.c_str(), "rb"), fclose);
 
             ASSERT(file.get() != nullptr, "Unable to open image file for reading", path);
 
