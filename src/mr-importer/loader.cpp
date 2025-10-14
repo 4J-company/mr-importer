@@ -34,9 +34,9 @@ inline namespace importer {
     auto extensions = fastgltf::Extensions::KHR_lights_punctual
                     | fastgltf::Extensions::KHR_materials_pbrSpecularGlossiness
                     | fastgltf::Extensions::EXT_mesh_gpu_instancing
+                    | fastgltf::Extensions::EXT_texture_webp
                     | fastgltf::Extensions::MSFT_texture_dds
                     | fastgltf::Extensions::MSFT_packing_occlusionRoughnessMetallic
-                    | fastgltf::Extensions::None
                     ;
     Parser parser(extensions);
     auto options = fastgltf::Options::LoadExternalBuffers
