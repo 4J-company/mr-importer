@@ -141,7 +141,8 @@ inline namespace importer {
 
   /** \brief Texture sampler settings placeholder. */
   struct SamplerData {
-    // TODO: copy fastgltf::Sampler
+    vk::Filter mag;
+    vk::Filter min;
   };
 
   /** \brief Adds PBR meaning to the texture */

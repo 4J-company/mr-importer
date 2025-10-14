@@ -563,10 +563,26 @@ inline namespace importer {
     std::optional<ImageData> img_data_opt = get_image_from_gltf(directory, options, asset, img);
     ASSERT(img_data_opt.has_value(), "Unable to load image");
 
+    static auto convert_filter = [](fastgltf::Filter filter) {
+      switch (filter) {
+        case fastgltf::Filter::Nearest:
+        case fastgltf::Filter::NearestMipMapLinear:
+        case fastgltf::Filter::NearestMipMapNearest:
+          return vk::Filter::eNearest;
+        case fastgltf::Filter::Linear:
+        case fastgltf::Filter::LinearMipMapLinear:
+        case fastgltf::Filter::LinearMipMapNearest:
+          return vk::Filter::eLinear;
+      }
+    };
+
     return TextureData(
       std::move(img_data_opt.value()),
       type,
-      {}
+      SamplerData{
+        convert_filter(asset.samplers[tex.samplerIndex.value()].minFilter.value()),
+        convert_filter(asset.samplers[tex.samplerIndex.value()].magFilter.value()),
+      }
     );
   }
 
