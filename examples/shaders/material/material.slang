@@ -20,12 +20,12 @@ public struct BlinnPhongMaterial< TAmbient:ISampler
 
 public struct StandardPBRMaterial< TBaseColor:ISampler
                                  , TMetallicRoughness:ISampler
-                                 , Emissive:ISampler
+                                 , TEmissive:ISampler
                                  , TOcclusion:ISampler
                                  > : IMaterial
 {
   TBaseColor base_color;
   TMetallicRoughness metallic_roughness;
-  Emissive emissive;
+  TEmissive emissive;
   TOcclusion occlusion;
 }
