@@ -114,6 +114,7 @@ inline namespace importer {
     Mesh result;
     result.transforms = std::move(mesh.transforms);
     result.name = std::move(mesh.name);
+    result.aabb = mesh.aabb;
     result.material = mesh.material;
 
     std::array streams = {
@@ -179,7 +180,6 @@ inline namespace importer {
     for (int i = result.lods.size()-1; i > 0; i--) {
       const auto &indices = result.lods[i];
       if (indices.indices.size() == 0) {
-        MR_DEBUG("Generated degenerate LOD#{} at {}. Need to investigate meshoptimizer", i, result.name);
         result.lods.erase(result.lods.begin() + i);
       }
     }

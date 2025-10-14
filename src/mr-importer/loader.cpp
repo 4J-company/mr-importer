@@ -119,6 +119,12 @@ inline namespace importer {
         if (positions.has_value()) {
           mesh.positions.reserve(positions.value().get().count);
           fastgltf::iterateAccessor<glm::vec3>(asset, positions.value(), [&](glm::vec3 v) {
+            mesh.aabb.min.x(std::min(mesh.aabb.min.x(), v.x));
+            mesh.aabb.min.y(std::min(mesh.aabb.min.y(), v.y));
+            mesh.aabb.min.z(std::min(mesh.aabb.min.z(), v.z));
+            mesh.aabb.max.x(std::max(mesh.aabb.max.x(), v.x));
+            mesh.aabb.max.y(std::max(mesh.aabb.max.y(), v.y));
+            mesh.aabb.max.z(std::max(mesh.aabb.max.z(), v.z));
             mesh.positions.push_back({v.x, v.y, v.z});
           });
         }
