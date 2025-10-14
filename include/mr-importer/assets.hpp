@@ -231,9 +231,6 @@ inline namespace importer {
     Shader(const std::filesystem::path& path);
   };
 
-  /** \brief Placeholder camera description. */
-  struct Camera {};
-
   struct LightBase {
     // RGB == Color; A == Intensity
     Color packed_color_and_intensity;
