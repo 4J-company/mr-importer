@@ -238,6 +238,10 @@ inline namespace importer {
     // RGB == Color; A == Intensity
     Color packed_color_and_intensity;
 
+    LightBase(float r, float g, float b, float intensity)
+      : packed_color_and_intensity(r, g, b, intensity)
+    {}
+
     float intensity() const noexcept { return packed_color_and_intensity.a(); }
     Color color() const noexcept {
       return {
@@ -260,6 +264,12 @@ inline namespace importer {
 
     float inner_cone_angle;
     float outer_cone_angle;
+
+    SpotLight(float r, float g, float b, float intensity, float inner_angle, float outer_angle)
+      : LightBase(r, g, b, intensity)
+      , inner_cone_angle(inner_angle)
+      , outer_cone_angle(outer_angle)
+    {}
   };
   /** \brief Point light parameters. */
   struct PointLight : LightBase {
@@ -275,6 +285,11 @@ inline namespace importer {
   struct Model {
     std::vector<Mesh> meshes;
     std::vector<MaterialData> materials;
+    struct Lights {
+      std::vector<DirectionalLight> directionals;
+      std::vector<PointLight> points;
+      std::vector<SpotLight> spots;
+    } lights;
 
     Model() = default;
     /** \brief Construct and import an asset from the given file path. */

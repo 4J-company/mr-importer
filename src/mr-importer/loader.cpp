@@ -708,6 +708,43 @@ inline namespace importer {
     return materials;
   }
 
+  static Model::Lights get_lights_from_asset(fastgltf::Asset *asset) {
+    Model::Lights lights;
+
+    for (auto& light : asset->lights) {
+      switch (light.type) {
+        case fastgltf::LightType::Directional:
+          lights.directionals.emplace_back(
+            light.color.x(),
+            light.color.y(),
+            light.color.z(),
+            light.intensity
+          );
+          break;
+        case fastgltf::LightType::Point:
+          lights.points.emplace_back(
+            light.color.x(),
+            light.color.y(),
+            light.color.z(),
+            light.intensity
+          );
+          break;
+        case fastgltf::LightType::Spot:
+          lights.spots.emplace_back(
+            light.color.x(),
+            light.color.y(),
+            light.color.z(),
+            light.intensity,
+            light.innerConeAngle.value(),
+            light.outerConeAngle.value()
+          );
+          break;
+      }
+    }
+
+    return lights;
+  }
+
   /**
    * Load a source asset (currently glTF) and convert it into runtime \ref Model.
    * Returns std::nullopt on parse or IO errors; logs details via MR_ logging.
@@ -736,6 +773,8 @@ inline namespace importer {
       }
     };
     materials_load.try_put(&asset.value());
+
+    res.lights = get_lights_from_asset(&asset.value());
 
     graph.wait_for_all();
 
