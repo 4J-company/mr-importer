@@ -234,21 +234,37 @@ inline namespace importer {
   /** \brief Placeholder camera description. */
   struct Camera {};
 
+  struct LightBase {
+    // RGB == Color; A == Intensity
+    Color packed_color_and_intensity;
+
+    float intensity() const noexcept { return packed_color_and_intensity.a(); }
+    Color color() const noexcept {
+      return {
+        packed_color_and_intensity.r(),
+        packed_color_and_intensity.g(),
+        packed_color_and_intensity.b(),
+      };
+    }
+  };
+
   /** \brief Directional light parameters. */
-  struct DirectionalLight {
-    Color color;
-    float intensity;
+  struct DirectionalLight : LightBase {
+    using LightBase::LightBase;
+    using LightBase::operator=;
   };
   /** \brief Spot light parameters. */
-  struct SpotLight {
-    Color color;
-    float intensity;
+  struct SpotLight : LightBase {
+    using LightBase::LightBase;
+    using LightBase::operator=;
+
+    float inner_cone_angle;
+    float outer_cone_angle;
   };
   /** \brief Point light parameters. */
-  struct PointLight {
-    Color color;
-    float intensity;
-    float radius;
+  struct PointLight : LightBase {
+    using LightBase::LightBase;
+    using LightBase::operator=;
   };
 
   /**
