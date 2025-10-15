@@ -563,8 +563,11 @@ inline namespace importer {
     std::optional<ImageData> img_data_opt = get_image_from_gltf(directory, options, asset, img);
     ASSERT(img_data_opt.has_value(), "Unable to load image");
 
-    static auto convert_filter = [](fastgltf::Filter filter) {
-      switch (filter) {
+    static auto convert_filter = [](fastgltf::Optional<fastgltf::Filter> filter) {
+      if (!filter.has_value()) {
+        return vk::Filter();
+      }
+      switch (filter.value()) {
         case fastgltf::Filter::Nearest:
         case fastgltf::Filter::NearestMipMapLinear:
         case fastgltf::Filter::NearestMipMapNearest:
@@ -576,14 +579,15 @@ inline namespace importer {
       }
     };
 
-    return TextureData(
-      std::move(img_data_opt.value()),
-      type,
-      SamplerData{
-        convert_filter(asset.samplers[tex.samplerIndex.value()].minFilter.value()),
-        convert_filter(asset.samplers[tex.samplerIndex.value()].magFilter.value()),
-      }
-    );
+    SamplerData sampler {};
+    if (tex.samplerIndex.has_value()) {
+      sampler = {
+        convert_filter(asset.samplers[tex.samplerIndex.value()].minFilter),
+        convert_filter(asset.samplers[tex.samplerIndex.value()].magFilter),
+      };
+    };
+
+    return TextureData(std::move(img_data_opt.value()), type, sampler);
   }
 
   /** Convert normalized vec4 to Color. */
