@@ -1,7 +1,5 @@
 #include <filesystem>
 
-#include <mr-manager/manager.hpp>
-
 #include "mr-importer/importer.hpp"
 
 int main(int argc, char **argv) {
@@ -10,7 +8,7 @@ int main(int argc, char **argv) {
     exit(47);
   }
 
-  auto handle = mr::Manager<mr::Shader>::get().create("id", std::filesystem::path(argv[1]));
-  printf("Pointer: %p\n", handle->spirv.get());
-  printf("Size: %zu\n", handle->spirv.size());
+  mr::Shader shader {std::filesystem::path(argv[1])};
+  printf("Pointer: %p\n", shader.spirv.get());
+  printf("Size: %zu\n", shader.spirv.size());
 }

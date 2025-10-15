@@ -22,7 +22,6 @@
 #include <meshoptimizer.h>
 
 // Internal model-renderer dependencies
-#include <mr-manager/manager.hpp>
 #include <mr-utils/log.hpp>
 #include <mr-math/math.hpp>
 

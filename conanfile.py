@@ -38,7 +38,6 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("mr-math/1.1.4")
         self.requires("mr-utils/1.0.4")
-        self.requires("mr-manager/1.0.1")
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.26]")
