@@ -9,7 +9,8 @@
 
 namespace mr {
 inline namespace importer {
-  std::pair<size_t, float> determine_lod_count_and_ratio(const PositionArray &positions) {
+namespace {
+  static std::pair<size_t, float> determine_lod_count_and_ratio(const PositionArray &positions) {
     constexpr int maxlods = 3;
 
     float lod_scale = meshopt_simplifyScale((float*)positions.data(), positions.size(), sizeof(Position));
@@ -33,7 +34,7 @@ inline namespace importer {
     return {lod_count, lod_scale};
   }
 
-  std::pair<IndexSpan, IndexSpan> generate_lod(
+  static std::pair<IndexSpan, IndexSpan> generate_lod(
     const PositionArray &positions,
     const IndexSpan &original_indices,
     IndexArray &index_array,
@@ -98,6 +99,7 @@ inline namespace importer {
 
     return {result_indices_span, result_shadow_indices_span};
   }
+}
 
   /**
    * Optimize mesh topology and build multiple LODs suitable for real-time rendering.

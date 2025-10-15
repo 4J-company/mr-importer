@@ -14,6 +14,12 @@
 
 namespace mr {
 inline namespace importer {
+  uint32_t ImageData::pixel_byte_size() const noexcept
+  {
+    return bytes_per_pixel == -1 ? format_byte_size(format) : bytes_per_pixel;
+  }
+
+  namespace {
   /**
    * Parse a glTF file into a fastgltf::Asset.
    *
@@ -270,11 +276,6 @@ inline namespace importer {
     });
 
     return {res.begin(), res.end()};
-  }
-
-  uint32_t ImageData::pixel_byte_size() const noexcept
-  {
-    return bytes_per_pixel == -1 ? format_byte_size(format) : bytes_per_pixel;
   }
 
   static void resize_image(
@@ -763,6 +764,7 @@ inline namespace importer {
     }
 
     return lights;
+  }
   }
 
   /**
