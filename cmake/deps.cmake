@@ -48,7 +48,7 @@ set(MR_IMPORTER_PRIVATE_DEPS
   fastgltf::fastgltf
   efsw::efsw
   fmt::fmt
-  onetbb::onetbb
+  TBB::tbb
   dds_image
   wuffs
 )
