@@ -564,7 +564,7 @@ inline namespace importer {
     std::optional<ImageData> img_data_opt = get_image_from_gltf(directory, options, asset, img);
     ASSERT(img_data_opt.has_value(), "Unable to load image");
 
-    static auto convert_filter = [](fastgltf::Optional<fastgltf::Filter> filter) {
+    static auto convert_filter = [](fastgltf::Optional<fastgltf::Filter> filter) -> vk::Filter {
       if (!filter.has_value()) {
         return vk::Filter();
       }
@@ -578,6 +578,8 @@ inline namespace importer {
         case fastgltf::Filter::LinearMipMapNearest:
           return vk::Filter::eLinear;
       }
+      ASSERT(false, "Unhandled Sampler::Filter", filter.value(), (int)filter.value());
+      return vk::Filter();
     };
 
     SamplerData sampler {};
@@ -703,7 +705,7 @@ inline namespace importer {
             directory,
             options,
             *asset,
-            TextureType::RoughnessMetallic,
+            TextureType::SpecularGlossiness,
             src.specularGlossiness->specularGlossinessTexture.value()
           );
           if (exp.has_value()) {
