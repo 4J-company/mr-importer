@@ -17,8 +17,7 @@ namespace {
     size_t lod_count = 0;
 
     if (lod_scale > 1) {
-      MR_WARNING("LOD Scale greater than 1 ({}). Needs investigation", lod_scale);
-      lod_scale = 0.1;
+      return {0, 0};
     }
 
     // we want any mesh to have at least 47 triangles

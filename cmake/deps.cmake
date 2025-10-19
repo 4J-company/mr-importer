@@ -8,14 +8,12 @@ include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
 
 # public dependencies
 find_package(glm REQUIRED)
-find_package(slang REQUIRED)
 find_package(mr-math REQUIRED)
 find_package(mr-utils REQUIRED)
 find_package(Vulkan REQUIRED)
 CPMAddPackage("gh:bemanproject/inplace_vector#b81a3c7")
 set(MR_IMPORTER_PUBLIC_DEPS
   glm::glm
-  slang::slang
   mr-math::mr-math
   mr-utils::mr-utils
   Vulkan::Headers
@@ -23,10 +21,12 @@ set(MR_IMPORTER_PUBLIC_DEPS
 )
 
 # private dependencies
-find_package(fmt REQUIRED)
-find_package(efsw REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(fastgltf REQUIRED)
+find_package(slang REQUIRED)
+find_package(TBB REQUIRED)
+find_package(Ktx REQUIRED)
+CPMAddPackage("gh:spnda/dds_image#main")
 CPMAddPackage(
   NAME wuffs
   GITHUB_REPOSITORY google/wuffs-mirror-release-c
@@ -38,15 +38,12 @@ if (${wuffs_ADDED})
   target_include_directories(wuffs INTERFACE ${wuffs_SOURCE_DIR}/release/c)
 endif()
 
-find_package(TBB REQUIRED)
-CPMAddPackage("gh:spnda/dds_image#main")
-
 set(MR_IMPORTER_PRIVATE_DEPS
   meshoptimizer::meshoptimizer
   fastgltf::fastgltf
-  efsw::efsw
-  fmt::fmt
+  slang::slang
   TBB::tbb
+  KTX::ktx
   dds_image
   wuffs
 )

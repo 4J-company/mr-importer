@@ -21,14 +21,12 @@ class mr_importerRecipe(ConanFile):
     exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake", "tests/main.cpp", "examples/*"
 
     def requirements(self):
-        self.requires("fmt/10.2.1")
         self.requires("spdlog/1.14.1", override=True)
-        self.requires("libdwarf/0.9.1", override=True)
-        self.requires("folly/2024.08.12.00")
 
-        self.requires("efsw/1.4.1")
         self.requires("meshoptimizer/0.25")
         self.requires("fastgltf/0.9.0-4j")
+
+        self.requires("ktx/4.3.2")
 
         self.requires("glm/1.0.1")
 

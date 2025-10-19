@@ -8,6 +8,10 @@
 
 #include <dds.hpp>
 
+#include <KHR/khr_df.h>
+#include <ktx.h>
+#include <ktxvulkan.h>
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
@@ -42,6 +46,7 @@ inline namespace importer {
                     | fastgltf::Extensions::EXT_mesh_gpu_instancing
                     | fastgltf::Extensions::EXT_texture_webp
                     | fastgltf::Extensions::MSFT_texture_dds
+                    | fastgltf::Extensions::KHR_texture_basisu
                     | fastgltf::Extensions::MSFT_packing_occlusionRoughnessMetallic
                     ;
     Parser parser(extensions);
@@ -364,6 +369,39 @@ inline namespace importer {
             ASSERT(new_image.height > 0, "Sanity check failed", image.name, path.c_str());
             ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
           }
+          else if (filePath.mimeType == fastgltf::MimeType::KTX2 || filePath.uri.fspath().extension() == ".ktx2") {
+            ktxTexture2* ktx_texture;
+            KTX_error_code result = ktxTexture_CreateFromNamedFile(
+              path.c_str(),
+              KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
+              (ktxTexture**)&ktx_texture
+            );
+
+            ASSERT(result == KTX_SUCCESS, "Unable to load KTX2 image", result, ktxErrorString(result));
+
+            if (ktxTexture2_NeedsTranscoding(ktx_texture)) {
+              result = ktxTexture2_TranscodeBasis(ktx_texture, KTX_TTF_BC7_RGBA, 0);
+              ASSERT(result == KTX_SUCCESS, "Unable to transcode KTX2 image to BC7 compression", result);
+            }
+
+            new_image.height = ktx_texture->baseHeight;
+            new_image.width = ktx_texture->baseWidth;
+            new_image.depth = ktx_texture->baseDepth;
+            new_image.format = (vk::Format)ktxTexture2_GetVkFormat(ktx_texture);
+            new_image.bytes_per_pixel = format_byte_size(new_image.format);
+            new_image.pixels.reset((std::byte*)ktx_texture->pData);
+
+            for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels; mip_index++) {
+                uint32_t copy_width = new_image.width >> mip_index;
+                uint32_t copy_height = new_image.height >> mip_index;
+                uint32_t copy_mip_level = mip_index;
+                ktx_size_t copy_buffer_offset = 0;
+                result = ktxTexture_GetImageOffset((ktxTexture*)ktx_texture, mip_index, 0, 0, &copy_buffer_offset);
+                ASSERT(result == KTX_SUCCESS, "Unable to load KTX2 image's mip map", mip_index, new_image.mips.size());
+
+                new_image.mips.emplace_back(new_image.pixels.get() + copy_buffer_offset, copy_width * copy_height * new_image.bytes_per_pixel);
+            }
+          }
           else {
             std::unique_ptr<FILE, int (*)(FILE*)> file (fopen(path.c_str(), "rb"), fclose);
 
@@ -453,8 +491,34 @@ inline namespace importer {
           std::visit(fastgltf::visitor { // We only care about VectorWithMime here, because we
                                          // specify LoadExternalBuffers, meaning all buffers
                                          // are already loaded into a vector.
-            [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)"); },
-            [&](fastgltf::sources::Vector& vector) {
+            [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)", arg); },
+            [&](const fastgltf::sources::Array& array) {
+              wuffs_aux::DecodeImageCallbacks callbacks;
+              wuffs_aux::sync_io::MemoryInput input((const char*)array.bytes.data() + bufferView.byteOffset, bufferView.byteLength);
+              wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
+
+              ASSERT(img.error_message.empty(), img.error_message);
+              ASSERT(img.pixbuf.pixcfg.is_valid(), "Something is wrong with the image (idk :) )");
+
+              wuffs_base__table_u8 tab = img.pixbuf.plane(0);
+              wuffs_base__pixel_format format = img.pixbuf.pixel_format();
+
+              ASSERT(format.bits_per_pixel() % 8 == 0,
+                  "Image format bits_per_pixel % 8 != 0. "
+                  "To handle such cases you'd need to change public API from byte_size to bit_size");
+
+              new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
+              new_image.width = tab.width / new_image.bytes_per_pixel;
+              new_image.height = tab.height;
+
+              ASSERT(new_image.width > 0, "Sanity check failed", image.name);
+              ASSERT(new_image.height > 0, "Sanity check failed", image.name);
+              ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name);
+
+              new_image.pixels.reset((std::byte*)img.pixbuf_mem_owner.release());
+              new_image.mips.emplace_back((std::byte*)tab.ptr, new_image.byte_size());
+            },
+            [&](const fastgltf::sources::Vector& vector) {
               wuffs_aux::DecodeImageCallbacks callbacks;
               wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data() + bufferView.byteOffset, bufferView.byteLength);
               wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
@@ -555,6 +619,9 @@ inline namespace importer {
     }
     if (tex.ddsImageIndex.has_value() && (!(options & Options::PreferUncompressed) || img_idx == ~0z)) {
       img_idx = tex.ddsImageIndex.value();
+    }
+    if (tex.basisuImageIndex.has_value() && (!(options & Options::PreferUncompressed) || img_idx == ~0z)) {
+      img_idx = tex.basisuImageIndex.value();
     }
     if (img_idx == ~0z) {
       return std::unexpected("Texture is in unsupported format");
