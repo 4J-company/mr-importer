@@ -27,6 +27,7 @@ class mr_importerRecipe(ConanFile):
         self.requires("fastgltf/0.9.0-4j")
 
         self.requires("ktx/4.3.2")
+        self.requires("draco/1.5.7")
 
         self.requires("glm/1.0.1")
 
