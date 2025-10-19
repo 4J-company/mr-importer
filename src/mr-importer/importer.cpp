@@ -14,6 +14,8 @@ inline namespace importer {
    */
   std::optional<Model> import(const std::filesystem::path& path, Options options)
   {
+    options = Options(options & ~Options::PreferUncompressed);
+
     std::optional<Model> asset = load(path, options);
 
     if (!asset) {

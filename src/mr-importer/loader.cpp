@@ -43,6 +43,7 @@ inline namespace importer {
 
     auto extensions = fastgltf::Extensions::KHR_lights_punctual
                     | fastgltf::Extensions::KHR_materials_pbrSpecularGlossiness
+                    | fastgltf::Extensions::KHR_draco_mesh_compression
                     | fastgltf::Extensions::EXT_mesh_gpu_instancing
                     | fastgltf::Extensions::EXT_texture_webp
                     | fastgltf::Extensions::MSFT_texture_dds
@@ -70,21 +71,22 @@ inline namespace importer {
     const fastgltf::Asset &asset,
     const fastgltf::Attribute &attribute)
   {
-    size_t id = attribute.accessorIndex;
-    ASSERT(id < asset.accessors.size(),
+    ASSERT(attribute.accessorIndex < asset.accessors.size(),
       "Invalid GLTF file. "
       "Attribute didn't contain valid accessor index. "
-      "Checkout attribute-accessor indices."
+      "Checkout attribute->accessor indices.",
+      attribute.name
     );
 
-    const fastgltf::Accessor& accessor = asset.accessors[id];
-    ASSERT(accessor.bufferViewIndex.has_value(),
-      "Invalid GLTF file. "
-      "Accessor didn't contain buffer view. "
-      "Checkout accessor-buffer_view indices."
-    );
+    const fastgltf::Accessor &res = asset.accessors[attribute.accessorIndex];
+    // ASSERT(res.bufferViewIndex.has_value(),
+    //   "Invalid GLTF file. "
+    //   "Attribute didn't contain valid bufferView index. "
+    //   "Checkout accessor->bufferView indices.",
+    //   attribute.name, attribute.accessorIndex
+    // );
 
-    return accessor;
+    return res;
   }
 
   /**
@@ -94,18 +96,107 @@ inline namespace importer {
    * unexpected type, and returns std::nullopt in that case.
    */
   static std::optional<std::reference_wrapper<const fastgltf::Accessor>> get_accessor_by_name(
+    Options options,
     const fastgltf::Asset &asset,
     const fastgltf::Primitive &primitive,
     std::string_view name)
   {
     using namespace fastgltf;
 
-    auto attr = primitive.findAttribute(name);
-    if (attr == primitive.attributes.cend()) {
+    const fastgltf::Attribute *attr = nullptr;
+
+    if (const auto *tmp = primitive.findAttribute(name); tmp != primitive.attributes.cend()) {
+      attr = tmp;
+    }
+    else {
+      MR_INFO("Primitive didn't contain {} attribute", name);
+    }
+
+    if (primitive.dracoCompression.get() != nullptr && (attr == nullptr || !(options & Options::PreferUncompressed))) {
+      if (const auto *tmp = primitive.dracoCompression->findAttribute(name); tmp != primitive.dracoCompression->attributes.cend()) {
+        MR_INFO("Decided to load DRACO {}", name);
+        attr = tmp;
+      }
+    }
+
+    if (attr == nullptr) {
       MR_WARNING("primitive didn't contain {} attribute", name);
       return std::nullopt;
     }
+
     return std::ref(get_accessor_from_attribute(asset, *attr));
+  }
+
+  std::array<fastgltf::math::fvec3, 2> getBoundingBoxMinMax(
+      const fastgltf::Asset &asset,
+      const fastgltf::Primitive &primitive)
+  {
+    using namespace fastgltf;
+
+    constexpr auto getAccessorMinMax = [](const Accessor &accessor) {
+      constexpr auto copyAccessorData = [](const AccessorBoundsArray &accessor, fastgltf::math::fvec3 &out) {
+        ASSERT(accessor.size() == 3);
+        switch (accessor.type()) {
+          case AccessorBoundsArray::BoundsType::float64:
+            out[0] = static_cast<float>(accessor.get<double>(0));
+            out[1] = static_cast<float>(accessor.get<double>(1));
+            out[2] = static_cast<float>(accessor.get<double>(2));
+            return;
+          case AccessorBoundsArray::BoundsType::int64:
+            out[0] = static_cast<float>(accessor.get<int64_t>(0));
+            out[1] = static_cast<float>(accessor.get<int64_t>(1));
+            out[2] = static_cast<float>(accessor.get<int64_t>(2));
+            return;
+        }
+        std::unreachable();
+      };
+
+      auto cwiseMax = []<typename T, std::size_t N>(
+          fastgltf::math::vec<T, N> lhs,
+          const fastgltf::math::vec<T, N> &rhs) -> fastgltf::math::vec<T, N>
+      {
+        [&]<std::size_t ...Is>(std::index_sequence<Is...>)
+        {
+          ((lhs.data()[Is] = std::max(lhs.data()[Is], rhs.data()[Is])), ...);
+        }(std::make_index_sequence<N>{});
+        return lhs;
+      };
+
+      std::array<fastgltf::math::fvec3, 2> result;
+      copyAccessorData(accessor.min.value(), get<0>(result));
+      copyAccessorData(accessor.max.value(), get<1>(result));
+
+      if (accessor.normalized) {
+        switch (accessor.componentType) {
+          case ComponentType::Byte:
+            get<0>(result) = cwiseMax(get<0>(result) / 127, fastgltf::math::fvec3(-1));
+            get<1>(result) = cwiseMax(get<1>(result) / 127, fastgltf::math::fvec3(-1));
+            break;
+          case ComponentType::UnsignedByte:
+            get<0>(result) /= 255;
+            get<1>(result) /= 255;
+            break;
+          case ComponentType::Short:
+            get<0>(result) = cwiseMax(get<0>(result) / 32767, fastgltf::math::fvec3(-1));
+            get<1>(result) = cwiseMax(get<1>(result) / 32767, fastgltf::math::fvec3(-1));
+            break;
+          case ComponentType::UnsignedShort:
+            get<0>(result) /= 65535;
+            get<1>(result) /= 65535;
+            break;
+          default:
+            ASSERT(false, "Normalized accessor must be either BYTE, UNSIGNED_BYTE, SHORT, or UNSIGNED_SHORT");
+        }
+      }
+      return result;
+    };
+
+    auto accessoropt = get_accessor_by_name(Options::All, asset, primitive, "POSITION");
+    ASSERT(accessoropt.has_value());
+
+    const Accessor &accessor = accessoropt.value().get();
+    std::array bound = getAccessorMinMax(accessor);
+    return bound;
   }
 
   /**
@@ -115,7 +206,7 @@ inline namespace importer {
    * leaves attributes partially defaulted if normals are missing.
    * Asserts that indices accessor exists.
    */
-  static std::optional<Mesh> get_mesh_from_primitive(const fastgltf::Asset &asset, const fastgltf::Primitive &primitive)
+  static std::optional<Mesh> get_mesh_from_primitive(Options options, const fastgltf::Asset &asset, const fastgltf::Primitive &primitive)
   {
     using namespace fastgltf;
 
@@ -126,16 +217,16 @@ inline namespace importer {
     // Process POSITION attribute
     tbb::flow::function_node<const char *> position_load {
       graph, tbb::flow::unlimited, [&](const char *str) {
-        std::optional<std::reference_wrapper<const Accessor>> positions = get_accessor_by_name(asset, primitive, str);
+        std::optional<std::reference_wrapper<const Accessor>> positions = get_accessor_by_name(options, asset, primitive, str);
         if (positions.has_value()) {
+          ASSERT(
+            positions.value().get().type == fastgltf::AccessorType::Vec3,
+            "Positions are not in vec3 format",
+            getAccessorTypeName(positions.value().get().type)
+          );
+
           mesh.positions.reserve(positions.value().get().count);
           fastgltf::iterateAccessor<glm::vec3>(asset, positions.value(), [&](glm::vec3 v) {
-            mesh.aabb.min.x(std::min(mesh.aabb.min.x(), v.x));
-            mesh.aabb.min.y(std::min(mesh.aabb.min.y(), v.y));
-            mesh.aabb.min.z(std::min(mesh.aabb.min.z(), v.z));
-            mesh.aabb.max.x(std::max(mesh.aabb.max.x(), v.x));
-            mesh.aabb.max.y(std::max(mesh.aabb.max.y(), v.y));
-            mesh.aabb.max.z(std::max(mesh.aabb.max.z(), v.z));
             mesh.positions.push_back({v.x, v.y, v.z});
           });
         }
@@ -143,12 +234,21 @@ inline namespace importer {
     };
     position_load.try_put("POSITION");
 
+    auto [min, max] = getBoundingBoxMinMax(asset, primitive);
+    mesh.aabb.min = { min.x(), min.y(), min.z(), };
+    mesh.aabb.max = { max.x(), max.y(), max.z(), };
+
     // Process NORMAL attribute
     tbb::flow::function_node<const char *> normal_load {
       graph, tbb::flow::unlimited, [&](const char *str) {
-        std::optional<std::reference_wrapper<const Accessor>> normals = get_accessor_by_name(asset, primitive, str);
+        std::optional<std::reference_wrapper<const Accessor>> normals = get_accessor_by_name(options, asset, primitive, str);
         if (normals.has_value()) {
-          mesh.attributes.resize(normals.value().get().count);
+          int count = normals.value().get().count;
+          mesh.attributes.resize(count);
+          ASSERT(normals.value().get().type == fastgltf::AccessorType::Vec3,
+                 "Normals are not in vec3 format",
+                 getAccessorTypeName(normals.value().get().type)
+          );
           fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, normals.value(), [&](glm::vec3 v, int index) {
             mesh.attributes[index].normal = {v.x, v.y, v.z};
           });
@@ -160,8 +260,9 @@ inline namespace importer {
     // Process TEXCOORD_0 attribute
     tbb::flow::function_node<const char *> texcoord0_load {
       graph, tbb::flow::unlimited, [&](const char *str) {
-        std::optional<std::reference_wrapper<const Accessor>> texcoords = get_accessor_by_name(asset, primitive, str);
+        std::optional<std::reference_wrapper<const Accessor>> texcoords = get_accessor_by_name(options, asset, primitive, str);
         if (texcoords.has_value()) {
+          ASSERT(texcoords.value().get().type == fastgltf::AccessorType::Vec2);
           mesh.attributes.resize(texcoords.value().get().count);
           fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, texcoords.value(), [&](glm::vec2 v, int index) {
             mesh.attributes[index].texcoord = {v.x, v.y};
@@ -195,6 +296,8 @@ inline namespace importer {
 
     graph.wait_for_all();
 
+    ASSERT(mesh.positions.size() == mesh.attributes.size());
+
     return mesh;
   }
 
@@ -204,7 +307,7 @@ inline namespace importer {
    * Iterates scene nodes to gather transforms, then converts all primitives
    * into Mesh objects, preserving names.
    */
-  static std::vector<Mesh> get_meshes_from_asset(fastgltf::Asset *asset) {
+  static std::vector<Mesh> get_meshes_from_asset(Options options, fastgltf::Asset *asset) {
     ASSERT(asset);
 
     using namespace fastgltf;
@@ -271,10 +374,10 @@ inline namespace importer {
       const fastgltf::Mesh& gltfMesh = asset->meshes[i];
       tbb::parallel_for<int>(0, gltfMesh.primitives.size(), [&] (int j) {
         const auto& primitive = gltfMesh.primitives[j];
-        std::optional<Mesh> mesh_opt = get_mesh_from_primitive(*asset, primitive);
+        std::optional<Mesh> mesh_opt = get_mesh_from_primitive(options, *asset, primitive);
         if (mesh_opt.has_value()) {
-          mesh_opt->transforms = transforms[i];
-          mesh_opt->name = gltfMesh.name;
+          mesh_opt->transforms = std::move(transforms[i]);
+          mesh_opt->name = std::move(gltfMesh.name);
           res.emplace_back(std::move(mesh_opt.value()));
         }
       });
@@ -852,8 +955,8 @@ inline namespace importer {
     tbb::flow::graph graph;
 
     tbb::flow::function_node<fastgltf::Asset*> meshes_load {
-      graph, tbb::flow::unlimited, [&res](fastgltf::Asset* asset) {
-        res.meshes = get_meshes_from_asset(asset);
+      graph, tbb::flow::unlimited, [&options, &res](fastgltf::Asset* asset) {
+        res.meshes = get_meshes_from_asset(options, asset);
       }
     };
     meshes_load.try_put(&asset.value());
