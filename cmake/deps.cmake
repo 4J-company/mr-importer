@@ -27,6 +27,7 @@ find_package(slang REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Ktx REQUIRED)
 find_package(Tracy REQUIRED)
+find_package(draco REQUIRED)
 CPMAddPackage("gh:spnda/dds_image#main")
 CPMAddPackage(
   NAME wuffs
@@ -45,6 +46,7 @@ set(MR_IMPORTER_PRIVATE_DEPS
   slang::slang
   TBB::tbb
   KTX::ktx
+  draco::draco
   dds_image
   wuffs
   Tracy::TracyClient
