@@ -180,8 +180,11 @@ inline namespace importer {
         mesh.indices.resize(idxAccessor.count);
         fastgltf::copyFromAccessor<std::uint32_t>(asset, idxAccessor, mesh.indices.data());
 
-        mesh.lods.resize(1);
-        mesh.lods[0].indices = IndexSpan(mesh.indices);
+        ASSERT(mesh.lods.size() == 0);
+        mesh.lods.emplace_back(
+          IndexSpan(mesh.indices.data(), mesh.indices.size()),
+          IndexSpan() // empty shadow indices
+        );
       }
     };
     index_load.try_put(nullptr);
@@ -208,8 +211,6 @@ inline namespace importer {
     ASSERT(asset);
 
     using namespace fastgltf;
-
-    tbb::concurrent_vector<Mesh> res;
 
     std::vector<std::vector<Transform>> transforms;
     transforms.resize(asset->meshes.size());
@@ -267,6 +268,9 @@ inline namespace importer {
       }
     );
 
+    tbb::concurrent_vector<Mesh> meshes;
+    meshes.reserve(asset->meshes.size() * 2);
+
     tbb::parallel_for<int>(0, asset->meshes.size(), [&] (int i) {
       const fastgltf::Mesh& gltfMesh = asset->meshes[i];
       tbb::parallel_for<int>(0, gltfMesh.primitives.size(), [&] (int j) {
@@ -275,12 +279,18 @@ inline namespace importer {
         if (mesh_opt.has_value()) {
           mesh_opt->transforms = transforms[i];
           mesh_opt->name = gltfMesh.name;
-          res.emplace_back(std::move(mesh_opt.value()));
+          meshes.emplace_back(std::move(mesh_opt.value()));
         }
       });
     });
 
-    return {res.begin(), res.end()};
+    std::vector<Mesh> result;
+    result.resize(meshes.size());
+    tbb::parallel_for<int>(0, meshes.size(), [&] (int i) {
+      result[i] = std::move(meshes[i]);
+    });
+
+    return result;
   }
 
   static void resize_image(
