@@ -73,6 +73,12 @@ inline namespace importer {
     std::size_t material;
     AABB aabb;
 
+    Mesh() noexcept = default;
+    Mesh(Mesh &&) noexcept = default;
+    Mesh & operator=(Mesh &&) noexcept = default;
+    Mesh(const Mesh &) = delete;
+    Mesh & operator=(const Mesh &) = delete;
+
     static inline constexpr std::array vertex_input_attribute_descriptions {
       vk::VertexInputAttributeDescription {
         .location = 0,

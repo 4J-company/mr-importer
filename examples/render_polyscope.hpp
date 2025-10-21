@@ -34,7 +34,7 @@ inline std::vector<std::array<T, 3>> convertToArrayOfTriples(const std::span<T>&
   return result;
 }
 
-inline void render(std::vector<mr::Mesh> meshes) {
+inline void render(const std::vector<mr::Mesh> &meshes) {
   polyscope::init();
 
   // Disable ground
