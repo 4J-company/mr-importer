@@ -57,13 +57,13 @@ if (MR_IMPORTER_BUILD_TESTS)
 endif()
 
 if (MR_IMPORTER_BUILD_EXAMPLES)
-  CPMAddPackage("gh:cone-forest/polyscope#f325c67ea60dd08ebc7bc6a28bb46cdc50db9d17")
+  find_package(raylib REQUIRED)
 
   add_executable(
     mr-importer-mesh-example
     examples/rendertest.cpp
   )
-  target_link_libraries(mr-importer-mesh-example PUBLIC mr-importer-lib polyscope)
+  target_link_libraries(mr-importer-mesh-example PUBLIC mr-importer-lib raylib)
 
   add_executable(
     mr-importer-shader-example

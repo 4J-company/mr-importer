@@ -37,6 +37,8 @@ class mr_importerRecipe(ConanFile):
         self.requires("mr-math/1.1.4")
         self.requires("mr-utils/1.0.4")
 
+        self.requires("raylib/5.5")
+
     def build_requirements(self):
         self.tool_requires("cmake/[>3.26]")
         self.tool_requires("ninja/[~1.12]")
