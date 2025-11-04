@@ -1,0 +1,87 @@
+name: macOS CI
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.h'
+      - 'conanfile.**'
+      - '.github/workflows/macos.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.h'
+      - 'conanfile.**'
+      - '.github/workflows/macos.yml'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - compiler: apple-clang
+            compiler_version: "16"
+            build_type: Release
+            cppstd: "20"
+          - compiler: apple-clang
+            compiler_version: "16"
+            build_type: Debug
+            cppstd: "20"
+          - compiler: apple-clang
+            compiler_version: "16"
+            build_type: Release
+            cppstd: "23"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Conan Client
+      uses: conan-io/setup-conan@v1
+      with:
+        cache_packages: true
+
+    - name: Add 4J-company local recipes index
+      run: |
+        git clone https://github.com/4J-company/conan-center-index.git
+        conan remote add 4J-company ./conan-center-index --type local-recipes-index
+
+    - name: Create macOS Conan Profile
+      run: |
+        mkdir -p .github/profiles
+        
+        # Detect architecture (Apple Silicon vs Intel)
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "arm64" ]; then
+          CONAN_ARCH="armv8"
+        else
+          CONAN_ARCH="x86_64"
+        fi
+        
+        cat > .github/profiles/build_profile << EOF
+        [settings]
+        os=Macos
+        arch=$CONAN_ARCH
+        compiler=${{ matrix.compiler }}
+        compiler.version=${{ matrix.compiler_version }}
+        compiler.cppstd=${{ matrix.cppstd }}
+        build_type=${{ matrix.build_type }}
+        compiler.libcxx=libc++
+        EOF
+
+        echo "Generated macOS profile:"
+        cat .github/profiles/build_profile
+        echo "Detected architecture: $ARCH -> $CONAN_ARCH"
+
+    - name: Install Dependencies
+      run: |
+        conan install . --build=missing --profile=.github/profiles/build_profile
+
+    - name: Build Project
+      run: |
+        conan build . --profile=.github/profiles/build_profile

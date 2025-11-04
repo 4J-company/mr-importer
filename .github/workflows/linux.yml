@@ -1,0 +1,131 @@
+name: Linux CI
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.h'
+      - 'conanfile.**'
+      - '.github/workflows/linux.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.h'
+      - 'conanfile.**'
+      - '.github/workflows/linux.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # GCC configurations
+          - compiler: gcc
+            compiler_version: "14"
+            build_type: Release
+            cppstd: "20"
+          - compiler: gcc
+            compiler_version: "14"
+            build_type: Debug
+            cppstd: "20"
+          - compiler: gcc
+            compiler_version: "15"
+            build_type: Release
+            cppstd: "20"
+          - compiler: gcc
+            compiler_version: "15"
+            build_type: Release
+            cppstd: "23"
+
+          # Clang configurations
+          - compiler: clang
+            compiler_version: "18"
+            build_type: Release
+            cppstd: "20"
+          - compiler: clang
+            compiler_version: "18"
+            build_type: Debug
+            cppstd: "20"
+          - compiler: clang
+            compiler_version: "19"
+            build_type: Release
+            cppstd: "20"
+          - compiler: clang
+            compiler_version: "19"
+            build_type: Release
+            cppstd: "23"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Conan Client
+      uses: conan-io/setup-conan@v1
+      with:
+        cache_packages: true
+
+    - name: Add 4J-company local recipes index
+      run: |
+        git clone https://github.com/4J-company/conan-center-index.git
+        conan remote add 4J-company ./conan-center-index --type local-recipes-index
+
+    - name: Install GCC
+      if: matrix.compiler == 'gcc'
+      run: |
+        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+        sudo apt-get update
+        sudo apt-get install gcc-${{ matrix.compiler_version }} g++-${{ matrix.compiler_version }}
+
+    - name: Install Clang
+      if: matrix.compiler == 'clang'
+      run: |
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+        echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${{ matrix.compiler_version }} main" | sudo tee /etc/apt/sources.list.d/llvm.list
+        sudo apt-get update
+        sudo apt-get install clang-${{ matrix.compiler_version }} clang++-${{ matrix.compiler_version }} lld-${{ matrix.compiler_version }}
+
+    - name: Create Linux Conan Profile
+      run: |
+        mkdir -p .github/profiles
+        
+        # Set compiler-specific environment
+        if [ "${{ matrix.compiler }}" = "gcc" ]; then
+          export CC=gcc-${{ matrix.compiler_version }}
+          export CXX=g++-${{ matrix.compiler_version }}
+          echo "CC=gcc-${{ matrix.compiler_version }}" >> $GITHUB_ENV
+          echo "CXX=g++-${{ matrix.compiler_version }}" >> $GITHUB_ENV
+          LIBCXX="libstdc++11"
+        elif [ "${{ matrix.compiler }}" = "clang" ]; then
+          export CC=clang-${{ matrix.compiler_version }}
+          export CXX=clang++-${{ matrix.compiler_version }}
+          echo "CC=clang-${{ matrix.compiler_version }}" >> $GITHUB_ENV
+          echo "CXX=clang++-${{ matrix.compiler_version }}" >> $GITHUB_ENV
+          LIBCXX="libstdc++11"
+        fi
+        
+        cat > .github/profiles/build_profile << EOF
+        [settings]
+        os=Linux
+        arch=x86_64
+        compiler=${{ matrix.compiler }}
+        compiler.version=${{ matrix.compiler_version }}
+        compiler.cppstd=${{ matrix.cppstd }}
+        build_type=${{ matrix.build_type }}
+        compiler.libcxx=$LIBCXX
+        EOF
+
+        echo "Generated Linux profile:"
+        cat .github/profiles/build_profile
+
+    - name: Install Dependencies
+      run: |
+        conan install . --build=missing --profile=.github/profiles/build_profile
+
+    - name: Build Project
+      run: |
+        conan build . --profile=.github/profiles/build_profile

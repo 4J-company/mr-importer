@@ -41,13 +41,10 @@ class mr_importerRecipe(ConanFile):
         self.tool_requires("cmake/[>3.26]")
         self.tool_requires("ninja/[~1.12]")
 
-        if self.settings.os == "Linux":
-            self.tool_requires("mold/[>=2.40]")
-
         self.test_requires("gtest/1.14.0")
 
     def validate(self):
-        check_min_cppstd(self, "23")
+        check_min_cppstd(self, "20")
 
     def configure(self):
         if self.settings.os == "Linux":

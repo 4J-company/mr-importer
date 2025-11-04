@@ -1,0 +1,88 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.h'
+      - 'conanfile.**'
+      - '.github/workflows/windows.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - '**.cpp'
+      - '**.hpp'
+      - '**.h'
+      - 'conanfile.**'
+      - '.github/workflows/windows.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - compiler: msvc
+            compiler_version: "193"
+            build_type: Release
+            runtime: dynamic
+            cppstd: "20"
+          - compiler: msvc
+            compiler_version: "193"
+            build_type: Debug
+            runtime: dynamic
+            cppstd: "20"
+          - compiler: msvc
+            compiler_version: "193"
+            build_type: Release
+            runtime: static
+            cppstd: "20"
+          - compiler: msvc
+            compiler_version: "193"
+            build_type: Release
+            runtime: dynamic
+            cppstd: "23"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Conan Client
+      uses: conan-io/setup-conan@v1
+      with:
+        cache_packages: true
+
+    - name: Add 4J-company local recipes index
+      run: |
+        git clone https://github.com/4J-company/conan-center-index.git
+        conan remote add 4J-company ./conan-center-index --type local-recipes-index
+
+    - name: Create Windows Conan Profile
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path ".github/profiles" -Force | Out-Null
+        
+        $ProfileContent = @"
+        [settings]
+        os=Windows
+        arch=x86_64
+        compiler=${{ matrix.compiler }}
+        compiler.version=${{ matrix.compiler_version }}
+        compiler.cppstd=${{ matrix.cppstd }}
+        build_type=${{ matrix.build_type }}
+        compiler.runtime=${{ matrix.runtime }}
+        "@
+        
+        Set-Content -Path ".github/profiles/build_profile" -Value $ProfileContent
+        Write-Host "Generated Windows profile:"
+        Get-Content ".github/profiles/build_profile"
+
+    - name: Install Dependencies
+      run: |
+        conan install . --build=missing --profile=.github/profiles/build_profile
+
+    - name: Build Project
+      run: |
+        conan build . --profile=.github/profiles/build_profile
