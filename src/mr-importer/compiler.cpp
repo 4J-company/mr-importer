@@ -23,10 +23,10 @@ namespace {
     if (session) {
       return session;
     }
-  
+
     static thread_local Slang::ComPtr<slang::IGlobalSession> global_session;
     slang::createGlobalSession(global_session.writeRef());
-  
+
     static const slang::TargetDesc target_desc {
       .format = SLANG_SPIRV,
       .profile = global_session->findProfile("spirv_1_5"),
@@ -52,12 +52,12 @@ namespace {
       .compilerOptionEntries = const_cast<slang::CompilerOptionEntry*>(options.data()), // If this shoots me in the foot - life is shit
       .compilerOptionEntryCount = options.size(),
     };
-  
+
     global_session->createSession(session_desc, session.writeRef());
-  
+
     return session;
   }
-  
+
   /**
    * Load/compile a Slang module from the given path.
    *
@@ -67,19 +67,22 @@ namespace {
   static std::expected<Slang::ComPtr<slang::IModule>, Slang::ComPtr<slang::IBlob>> compile_module(slang::ISession* session, const std::filesystem::path &path) {
     Slang::ComPtr<slang::IModule> module;
     Slang::ComPtr<slang::IBlob> blob;
-  
-    const char *module_path = path.c_str();
-    const char *module_name = path.stem().c_str();
-  
+
+    auto module_path_str = path.string();
+    auto module_name_str = path.stem().string();
+
+    const char *module_path = module_path_str.c_str();
+    const char *module_name = module_name_str.c_str();
+
     module = session->loadModule(module_path, blob.writeRef());
-  
+
     if (blob) {
       return std::unexpected(blob);
     }
-  
+
     return module;
   }
-  
+
   /**
    * Find the entry point named "main" in the given module.
    *
@@ -93,7 +96,7 @@ namespace {
     }
     return std::nullopt;
   }
-  
+
   /**
    * Compose the module and its entry point into a component for linking.
    *
@@ -107,21 +110,21 @@ namespace {
       (slang::IComponentType*)module,
       (slang::IComponentType*)entry
     };
-  
+
     [[maybe_unused]] SlangResult res = session->createCompositeComponentType(
       components.data(),
       components.size(),
       composed.writeRef(),
       blob.writeRef()
     );
-  
+
     if (blob) {
       return std::unexpected(blob);
     }
-  
+
     return composed;
   }
-  
+
   /**
    * Link the composed component into a final program.
    *
@@ -131,19 +134,19 @@ namespace {
   static std::expected<Slang::ComPtr<slang::IComponentType>, Slang::ComPtr<slang::IBlob>> link_program(slang::IComponentType *composed) {
     Slang::ComPtr<slang::IBlob> blob;
     Slang::ComPtr<slang::IComponentType> linked;
-  
+
     [[maybe_unused]] SlangResult res = composed->link(
       linked.writeRef(),
       blob.writeRef()
     );
-  
+
     if (blob) {
       return std::unexpected(blob);
     }
-  
+
     return linked;
   }
-  
+
   /**
    * Extract target code (SPIR-V) for entry point 0 from the linked program.
    *
@@ -153,9 +156,9 @@ namespace {
   static std::expected<Slang::ComPtr<slang::IBlob>, Slang::ComPtr<slang::IBlob>> get_target_code(slang::IComponentType *linked) {
     Slang::ComPtr<slang::IBlob> blob;
     Slang::ComPtr<slang::IBlob> code;
-  
+
     [[maybe_unused]] SlangResult res = linked->getEntryPointCode(0, 0, code.writeRef(), blob.writeRef());
-  
+
     if (blob) {
       return std::unexpected(blob);
     }
@@ -215,7 +218,7 @@ namespace {
     if (auto res = get_target_code(linked); res.has_value()) {
       auto comptr = std::move(res.value());
       auto ptr = comptr.detach();
-      
+
       shader.spirv.reset((std::byte*)ptr->getBufferPointer());
       shader.spirv.size(ptr->getBufferSize());
     }

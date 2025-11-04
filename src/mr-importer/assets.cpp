@@ -16,7 +16,7 @@ inline namespace importer {
     Model::Model(const std::filesystem::path &path) {
       auto imported = import(path);
       if (!imported) {
-        MR_ERROR("Model import failed: {}", path.c_str());
+        MR_ERROR("Model import failed: {}", path.string());
         return;
       }
 
@@ -30,7 +30,7 @@ inline namespace importer {
     Shader::Shader(const std::filesystem::path &path) {
       auto compiled = compile(path);
       if (!compiled) {
-        MR_ERROR("Shader compilation failed: {}", path.c_str());
+        MR_ERROR("Shader compilation failed: {}", path.string());
         return;
       }
 
