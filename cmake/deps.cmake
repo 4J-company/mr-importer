@@ -26,6 +26,7 @@ find_package(fastgltf REQUIRED)
 find_package(slang REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Ktx REQUIRED)
+find_package(Tracy REQUIRED)
 CPMAddPackage("gh:spnda/dds_image#main")
 CPMAddPackage(
   NAME wuffs
@@ -46,4 +47,5 @@ set(MR_IMPORTER_PRIVATE_DEPS
   KTX::ktx
   dds_image
   wuffs
+  Tracy::TracyClient
 )

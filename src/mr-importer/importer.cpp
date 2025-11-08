@@ -16,6 +16,8 @@ inline namespace importer {
    */
   std::optional<Model> import(const std::filesystem::path& path, Options options)
   {
+    ZoneScoped;
+
     FlowGraph graph;
     graph.path = std::move(path);
 

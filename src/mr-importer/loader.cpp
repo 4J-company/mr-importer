@@ -22,6 +22,7 @@ namespace mr {
 inline namespace importer {
   uint32_t ImageData::pixel_byte_size() const noexcept
   {
+    ZoneScoped;
     return bytes_per_pixel == -1 ? format_byte_size(format) : bytes_per_pixel;
   }
 
@@ -36,6 +37,7 @@ inline namespace importer {
   {
     using namespace fastgltf;
 
+    ZoneScoped;
     auto [err, data] = GltfDataBuffer::FromPath(path);
     if (err != Error::None) {
       MR_ERROR("Failed to parse GLTF file\n"
@@ -74,6 +76,8 @@ inline namespace importer {
     const fastgltf::Asset &asset,
     const fastgltf::Attribute &attribute)
   {
+    ZoneScoped;
+
     size_t id = attribute.accessorIndex;
     ASSERT(id < asset.accessors.size(),
       "Invalid GLTF file. "
@@ -102,6 +106,8 @@ inline namespace importer {
     const fastgltf::Primitive &primitive,
     std::string_view name)
   {
+    ZoneScoped;
+
     using namespace fastgltf;
 
     auto attr = primitive.findAttribute(name);
@@ -121,6 +127,8 @@ inline namespace importer {
    */
   static std::optional<Mesh> get_mesh_from_primitive(const fastgltf::Asset &asset, const fastgltf::Primitive &primitive)
   {
+    ZoneScoped;
+
     using namespace fastgltf;
 
     Mesh mesh;
@@ -212,12 +220,17 @@ inline namespace importer {
    * into Mesh objects, preserving names.
    */
   static std::vector<Mesh> get_meshes_from_asset(fastgltf::Asset *asset) {
+    ZoneScoped;
+
     ASSERT(asset);
 
     using namespace fastgltf;
 
     std::vector<std::vector<Transform>> transforms;
     transforms.resize(asset->meshes.size());
+    {
+    ZoneScoped;
+
     fastgltf::iterateSceneNodes(*asset, 0, fastgltf::math::fmat4x4(),
       [&](fastgltf::Node& node, fastgltf::math::fmat4x4 matrix) {
         if (node.meshIndex.has_value()) {
@@ -271,9 +284,14 @@ inline namespace importer {
         }
       }
     );
+    }
+
 
     tbb::concurrent_vector<Mesh> meshes;
     meshes.reserve(asset->meshes.size() * 2);
+
+    {
+    ZoneScoped;
 
     tbb::parallel_for<int>(0, asset->meshes.size(), [&] (int i) {
       const fastgltf::Mesh& gltfMesh = asset->meshes[i];
@@ -287,6 +305,7 @@ inline namespace importer {
         }
       });
     });
+    }
 
     std::vector<Mesh> result;
     result.resize(meshes.size());
@@ -303,6 +322,8 @@ inline namespace importer {
       size_t component_size,
       size_t desired_component_number)
   {
+    ZoneScoped;
+
     if (desired_component_number == component_number) {
       return;
     }
@@ -343,6 +364,8 @@ inline namespace importer {
    */
   static std::optional<ImageData> get_image_from_gltf(const std::filesystem::path& directory, Options options, const fastgltf::Asset &asset, const fastgltf::Image &image)
   {
+    ZoneScoped;
+
     ImageData new_image {};
 
     std::visit(
@@ -624,6 +647,8 @@ inline namespace importer {
       TextureType type,
       const fastgltf::TextureInfo &texinfo)
   {
+    ZoneScoped;
+
     fastgltf::Texture &tex = asset.textures[texinfo.textureIndex];
 
     size_t img_idx = ~0z;
@@ -692,7 +717,10 @@ inline namespace importer {
   static std::vector<MaterialData> get_materials_from_asset(
       const std::filesystem::path &directory,
       fastgltf::Asset *asset,
-      Options options) {
+      Options options)
+  {
+    ZoneScoped;
+
     ASSERT(asset);
 
     std::vector<MaterialData> materials;
@@ -812,7 +840,10 @@ inline namespace importer {
     return materials;
   }
 
-  static Model::Lights get_lights_from_asset(fastgltf::Asset *asset) {
+  static Model::Lights get_lights_from_asset(fastgltf::Asset *asset)
+  {
+    ZoneScoped;
+
     Model::Lights lights;
 
     for (auto& light : asset->lights) {
@@ -850,7 +881,10 @@ inline namespace importer {
   }
   }
 
-  void add_loader_nodes(FlowGraph &graph, const Options &options) {
+  void add_loader_nodes(FlowGraph &graph, const Options &options)
+  {
+    ZoneScoped;
+
     graph.asset_loader = std::make_unique<tbb::flow::input_node<fastgltf::Asset*>>(
       graph.graph, [&graph](oneapi::tbb::flow_control &fc) -> fastgltf::Asset* {
         if (graph.model) {
@@ -858,6 +892,7 @@ inline namespace importer {
           return nullptr;
         }
 
+        ZoneScoped;
         graph.asset = get_asset_from_path(graph.path);
         if (!graph.asset) {
           MR_ERROR("Failed to load asset from path: {}", graph.path.string());
@@ -873,6 +908,7 @@ inline namespace importer {
     graph.meshes_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset*, fastgltf::Asset*>>(
       graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset* asset) -> fastgltf::Asset* {
         if (asset != nullptr) {
+          ZoneScoped;
           graph.model->meshes = get_meshes_from_asset(asset);
         }
         return asset;
@@ -882,6 +918,7 @@ inline namespace importer {
     graph.materials_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset*>>(
       graph.graph, tbb::flow::unlimited, [&graph, &options](fastgltf::Asset* asset) {
         if (asset != nullptr) {
+          ZoneScoped;
           graph.model->materials = get_materials_from_asset(graph.path.parent_path(), &graph.asset.value(), options);
         }
       }
@@ -890,6 +927,7 @@ inline namespace importer {
     graph.lights_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset*>>(
       graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset* asset) {
         if (asset != nullptr) {
+          ZoneScoped;
           graph.model->lights = get_lights_from_asset(asset);
         }
       }

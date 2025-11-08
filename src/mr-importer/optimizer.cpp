@@ -12,7 +12,10 @@
 namespace mr {
 inline namespace importer {
 namespace {
-  static std::pair<size_t, float> determine_lod_count_and_ratio(const PositionArray &positions, const IndexSpan &indices) {
+  static std::pair<size_t, float> determine_lod_count_and_ratio(const PositionArray &positions, const IndexSpan &indices)
+  {
+    ZoneScoped;
+
     constexpr int maxlods = 3;
 
     float lod_scale = meshopt_simplifyScale((float*)positions.data(), positions.size(), sizeof(Position));
@@ -41,6 +44,8 @@ namespace {
     float lod_ratio,
     int lod_index)
   {
+    ZoneScoped;
+
     static constexpr float target_error = 0.05f;
 
     IndexArray result_indices;
@@ -104,6 +109,7 @@ namespace {
    * Optimize mesh topology and build multiple LODs suitable for real-time rendering.
    */
   Mesh optimize(Mesh mesh) {
+    ZoneScoped;
     if (mesh.attributes.empty()) {
       MR_WARNING(
           "Mesh has no attributes, but they are considered by `optimize` function."

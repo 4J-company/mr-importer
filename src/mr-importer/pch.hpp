@@ -42,3 +42,4 @@
 #include <slang-com-ptr.h>
 #include <slang.h>
 
+#include <tracy/Tracy.hpp>
