@@ -920,6 +920,7 @@ inline namespace importer {
         graph.asset = get_asset_from_path(graph.path);
         if (!graph.asset) {
           MR_ERROR("Failed to load asset from path: {}", graph.path.string());
+          fc.stop();
           return nullptr;
         }
         
