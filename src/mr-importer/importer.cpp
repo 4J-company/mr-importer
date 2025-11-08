@@ -2,6 +2,8 @@
 
 #include "pch.hpp"
 
+#include "flowgraph.hpp"
+
 namespace mr {
 inline namespace importer {
   /**
@@ -14,20 +16,16 @@ inline namespace importer {
    */
   std::optional<Model> import(const std::filesystem::path& path, Options options)
   {
-    std::optional<Model> asset = load(path, options);
+    FlowGraph graph;
+    graph.path = std::move(path);
 
-    if (!asset) {
-      return std::nullopt;
-    }
+    add_loader_nodes(graph, options);
+    add_optimizer_nodes(graph, options);
 
-    if (options & Options::OptimizeMeshes) {
-      tbb::parallel_for_each(asset.value().meshes, [](Mesh &mesh) {
-          mesh = mr::optimize(std::move(mesh));
-        }
-      );
-    }
+    graph.asset_loader->activate();
+    graph.graph.wait_for_all();
 
-    return asset;
+    return std::move(*graph.model.get());
   }
 } // namespace importer
 } // namespace mr

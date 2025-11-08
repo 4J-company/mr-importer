@@ -7,10 +7,12 @@
 
 #include "pch.hpp"
 
+#include "flowgraph.hpp"
+
 namespace mr {
 inline namespace importer {
 namespace {
-  static std::pair<size_t, float> determine_lod_count_and_ratio(const PositionArray &positions) {
+  static std::pair<size_t, float> determine_lod_count_and_ratio(const PositionArray &positions, const IndexSpan &indices) {
     constexpr int maxlods = 3;
 
     float lod_scale = meshopt_simplifyScale((float*)positions.data(), positions.size(), sizeof(Position));
@@ -21,9 +23,7 @@ namespace {
     }
 
     // we want any mesh to have at least 47 triangles
-    while (positions.size() * std::pow(lod_scale, lod_count) / 3 >= 47) {
-      lod_count++;
-    }
+    lod_count = std::ceil(std::log(3 * 47 / indices.size()) / std::log(lod_scale));
 
     if (lod_count > maxlods) {
       lod_scale = std::pow(lod_scale, lod_count / (float)maxlods);
@@ -123,15 +123,16 @@ namespace {
       meshopt_Stream{mesh.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
     };
 
-    auto [count, ratio] = determine_lod_count_and_ratio(mesh.positions);
+    auto [count, ratio] = determine_lod_count_and_ratio(mesh.positions, mesh.lods[0].indices);
     result.indices.reserve(2 * mesh.indices.size() * (count + 1));
     result.lods.resize(count + 1);
 
     // improve vertex locality
-    meshopt_optimizeVertexCache(mesh.indices.data(), mesh.indices.data(), mesh.indices.size(), mesh.positions.size());
+    result.indices.resize(mesh.indices.size());
+    meshopt_optimizeVertexCache(result.indices.data(), mesh.indices.data(), mesh.indices.size(), mesh.positions.size());
 
     // optimize overdraw
-    meshopt_optimizeOverdraw(mesh.indices.data(), mesh.indices.data(), mesh.indices.size(),
+    meshopt_optimizeOverdraw(mesh.indices.data(), result.indices.data(), mesh.indices.size(),
                              (float*)mesh.positions.data(), mesh.positions.size(), sizeof(Position), 1.05f);
 
     IndexArray remap;
@@ -187,5 +188,18 @@ namespace {
 
     return result;
   }
+
+void add_optimizer_nodes(FlowGraph &graph, const Options &options) {
+  graph.meshes_optimize = std::make_unique<tbb::flow::function_node<fastgltf::Asset*>>(
+    graph.graph, tbb::flow::unlimited, [&graph, &options](fastgltf::Asset* asset) {
+    if (asset != nullptr && (options & Options::OptimizeMeshes)) {
+      tbb::parallel_for_each(graph.model->meshes, [](Mesh &mesh) {
+        mesh = mr::optimize(std::move(mesh));
+      });
+    }
+  });
+  tbb::flow::make_edge(*graph.meshes_load, *graph.meshes_optimize);
+}
+
 }
 }

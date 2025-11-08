@@ -18,6 +18,7 @@ include(cmake/deps.cmake)
 
 add_library(${MR_IMPORTER_LIB_NAME}
     include/mr-importer/def.hpp
+    include/mr-importer/options.hpp
     include/mr-importer/assets.hpp
     include/mr-importer/importer.hpp
     include/mr-importer/loader.hpp
@@ -29,6 +30,7 @@ add_library(${MR_IMPORTER_LIB_NAME}
     src/mr-importer/loader.cpp
     src/mr-importer/optimizer.cpp
     src/mr-importer/compiler.cpp
+    src/mr-importer/flowgraph.hpp
     src/mr-importer/pch.hpp
 )
 target_compile_features(${MR_IMPORTER_LIB_NAME} PUBLIC cxx_std_23)

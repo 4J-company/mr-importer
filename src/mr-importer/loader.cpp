@@ -16,6 +16,8 @@
 
 #include "pch.hpp"
 
+#include "flowgraph.hpp"
+
 namespace mr {
 inline namespace importer {
   uint32_t ImageData::pixel_byte_size() const noexcept
@@ -30,7 +32,7 @@ inline namespace importer {
    * On IO or parse error, logs an error with the fastgltf code and returns
    * std::nullopt. Uses LoadExternalBuffers/Images to resolve external data.
    */
-  static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &dir, const std::filesystem::path &path)
+  static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &path)
   {
     using namespace fastgltf;
 
@@ -54,6 +56,8 @@ inline namespace importer {
                  | fastgltf::Options::DontRequireValidAssetMember
                  ;
     
+    auto dir = path.parent_path();
+
     MR_DEBUG("Loading from directory {}", dir.string());
 
     auto [error, asset] = parser.loadGltf(data, dir, options);
@@ -597,7 +601,7 @@ inline namespace importer {
             break;
           }
         default:
-          ASSERT(false, "Failed to determine number of image components", new_image.bytes_per_pixel);
+          PANIC("Failed to determine number of image components", new_image.bytes_per_pixel, options);
           break;
       }
     }
@@ -846,40 +850,70 @@ inline namespace importer {
   }
   }
 
+  void add_loader_nodes(FlowGraph &graph, const Options &options) {
+    graph.asset_loader = std::make_unique<tbb::flow::input_node<fastgltf::Asset*>>(
+      graph.graph, [&graph](oneapi::tbb::flow_control &fc) -> fastgltf::Asset* {
+        if (graph.model) {
+          fc.stop();
+          return nullptr;
+        }
+
+        graph.asset = get_asset_from_path(graph.path);
+        if (!graph.asset) {
+          MR_ERROR("Failed to load asset from path: {}", graph.path.string());
+          return nullptr;
+        }
+        
+        graph.model = std::make_unique<Model>();
+
+        return &graph.asset.value();
+      }
+    );
+
+    graph.meshes_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset*, fastgltf::Asset*>>(
+      graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset* asset) -> fastgltf::Asset* {
+        if (asset != nullptr) {
+          graph.model->meshes = get_meshes_from_asset(asset);
+        }
+        return asset;
+      }
+    );
+
+    graph.materials_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset*>>(
+      graph.graph, tbb::flow::unlimited, [&graph, &options](fastgltf::Asset* asset) {
+        if (asset != nullptr) {
+          graph.model->materials = get_materials_from_asset(graph.path.parent_path(), &graph.asset.value(), options);
+        }
+      }
+    );
+
+    graph.lights_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset*>>(
+      graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset* asset) {
+        if (asset != nullptr) {
+          graph.model->lights = get_lights_from_asset(asset);
+        }
+      }
+    );
+
+    tbb::flow::make_edge(*graph.asset_loader, *graph.meshes_load);
+    tbb::flow::make_edge(*graph.asset_loader, *graph.materials_load);
+    tbb::flow::make_edge(*graph.asset_loader, *graph.lights_load);
+  }
+
   /**
    * Load a source asset (currently glTF) and convert it into runtime \ref Model.
    * Returns std::nullopt on parse or IO errors; logs details via MR_ logging.
    */
   std::optional<Model> load(std::filesystem::path path, Options options) {
-    std::filesystem::path dir = path.parent_path();
-    std::optional<fastgltf::Asset> asset = get_asset_from_path(dir, path);
-    if (!asset) {
-      return std::nullopt;
-    }
+    FlowGraph graph;
+    graph.path = std::move(path);
 
-    importer::Model res;
+    add_loader_nodes(graph, options);
 
-    tbb::flow::graph graph;
+    graph.asset_loader->activate();
+    graph.graph.wait_for_all();
 
-    tbb::flow::function_node<fastgltf::Asset*> meshes_load {
-      graph, tbb::flow::unlimited, [&res](fastgltf::Asset* asset) {
-        res.meshes = get_meshes_from_asset(asset);
-      }
-    };
-    meshes_load.try_put(&asset.value());
-
-    tbb::flow::function_node<fastgltf::Asset*> materials_load {
-      graph, tbb::flow::unlimited, [&res, &dir, &options](fastgltf::Asset* asset) {
-        res.materials = get_materials_from_asset(dir, asset, options);
-      }
-    };
-    materials_load.try_put(&asset.value());
-
-    res.lights = get_lights_from_asset(&asset.value());
-
-    graph.wait_for_all();
-
-    return res;
+    return graph.model.get() == nullptr ? std::nullopt : std::optional(std::move(*graph.model));
   }
   }
 }
