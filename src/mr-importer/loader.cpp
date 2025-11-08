@@ -22,7 +22,6 @@ namespace mr {
 inline namespace importer {
   uint32_t ImageData::pixel_byte_size() const noexcept
   {
-    ZoneScoped;
     return bytes_per_pixel == -1 ? format_byte_size(format) : bytes_per_pixel;
   }
 
@@ -76,8 +75,6 @@ inline namespace importer {
     const fastgltf::Asset &asset,
     const fastgltf::Attribute &attribute)
   {
-    ZoneScoped;
-
     size_t id = attribute.accessorIndex;
     ASSERT(id < asset.accessors.size(),
       "Invalid GLTF file. "
@@ -299,7 +296,7 @@ inline namespace importer {
         const auto& primitive = gltfMesh.primitives[j];
         std::optional<Mesh> mesh_opt = get_mesh_from_primitive(*asset, primitive);
         if (mesh_opt.has_value()) {
-          mesh_opt->transforms = transforms[i];
+          mesh_opt->transforms = std::move(transforms[i]);
           mesh_opt->name = gltfMesh.name;
           meshes.emplace_back(std::move(mesh_opt.value()));
         }
@@ -384,6 +381,8 @@ inline namespace importer {
           const std::string path = std::move(absolute_path).string();
 
           if (filePath.mimeType == fastgltf::MimeType::DDS || filePath.uri.fspath().extension() == ".dds") {
+            ZoneScopedN("DDS import");
+
             dds::Image dds_image;
             dds::ReadResult res = dds::readFile(path, &dds_image);
             ASSERT(res == dds::ReadResult::Success, "Unable to parse DDS image", res);
@@ -407,6 +406,8 @@ inline namespace importer {
             ASSERT(new_image.bytes_per_pixel > 0, "Sanity check failed", image.name, path.c_str());
           }
           else if (filePath.mimeType == fastgltf::MimeType::KTX2 || filePath.uri.fspath().extension() == ".ktx2") {
+            ZoneScopedN("KTX import");
+
             ktxTexture2* ktx_texture;
             KTX_error_code result = ktxTexture_CreateFromNamedFile(
               path.c_str(),
@@ -440,6 +441,8 @@ inline namespace importer {
             }
           }
           else {
+            ZoneScopedN("WUFFS import");
+
             std::unique_ptr<FILE, int (*)(FILE*)> file (fopen(path.c_str(), "rb"), fclose);
 
             ASSERT(file.get() != nullptr, "Unable to open image file for reading", path);
@@ -470,6 +473,8 @@ inline namespace importer {
           }
         },
         [&](const fastgltf::sources::Array& array) {
+          ZoneScopedN("WUFFS import");
+
           wuffs_aux::DecodeImageCallbacks callbacks;
           wuffs_aux::sync_io::MemoryInput input((const char*)array.bytes.data(), array.bytes.size());
           wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
@@ -496,6 +501,8 @@ inline namespace importer {
           new_image.mips.emplace_back((std::byte*)tab.ptr, new_image.byte_size());
         },
         [&](const fastgltf::sources::Vector& vector) {
+          ZoneScopedN("WUFFS import");
+
           wuffs_aux::DecodeImageCallbacks callbacks;
           wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data(), vector.bytes.size());
           wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
@@ -530,6 +537,8 @@ inline namespace importer {
                                          // are already loaded into a vector.
             [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)", arg); },
             [&](const fastgltf::sources::Array& array) {
+              ZoneScopedN("WUFFS import");
+
               wuffs_aux::DecodeImageCallbacks callbacks;
               wuffs_aux::sync_io::MemoryInput input((const char*)array.bytes.data() + bufferView.byteOffset, bufferView.byteLength);
               wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
@@ -556,6 +565,8 @@ inline namespace importer {
               new_image.mips.emplace_back((std::byte*)tab.ptr, new_image.byte_size());
             },
             [&](const fastgltf::sources::Vector& vector) {
+              ZoneScopedN("WUFFS import");
+
               wuffs_aux::DecodeImageCallbacks callbacks;
               wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data() + bufferView.byteOffset, bufferView.byteLength);
               wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
@@ -738,10 +749,13 @@ inline namespace importer {
         dst.constants.normal_map_intensity = 1;
         dst.constants.emissive_strength = src.emissiveStrength;
 
+        tbb::concurrent_vector<TextureData> textures;
+
+        tbb::parallel_invoke([&] {
         if (src.pbrData.baseColorTexture.has_value()) {
           auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::BaseColor, src.pbrData.baseColorTexture.value());
           if (exp.has_value()) {
-            dst.textures.emplace_back(std::move(exp.value()));
+            textures.emplace_back(std::move(exp.value()));
           }
           else {
             MR_ERROR("Loading Base Color texture - ", exp.error());
@@ -750,23 +764,25 @@ inline namespace importer {
         else if (src.specularGlossiness.get() && src.specularGlossiness->diffuseTexture.has_value()) {
           auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::BaseColor, src.specularGlossiness->diffuseTexture.value());
           if (exp.has_value()) {
-            dst.textures.emplace_back(std::move(exp.value()));
+            textures.emplace_back(std::move(exp.value()));
           }
           else {
             MR_ERROR("Loading Base Color texture - ", exp.error());
           }
         }
-
+        },
+        [&] {
         if (src.normalTexture.has_value()) {
           auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::NormalMap, src.normalTexture.value());
           if (exp.has_value()) {
-            dst.textures.emplace_back(std::move(exp.value()));
+            textures.emplace_back(std::move(exp.value()));
           }
           else {
             MR_WARNING("Loading Normal Map texture - ", exp.error());
           }
         }
-
+        },
+        [&] {
         if (src.packedOcclusionRoughnessMetallicTextures &&
             src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture.has_value()) {
           auto exp = get_texture_from_gltf(
@@ -777,7 +793,7 @@ inline namespace importer {
             src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture.value()
           );
           if (exp.has_value()) {
-            dst.textures.emplace_back(std::move(exp.value()));
+            textures.emplace_back(std::move(exp.value()));
           }
           else {
             MR_ERROR("Loading packed Occlusion Roughness Metallic texture - ", exp.error());
@@ -793,7 +809,7 @@ inline namespace importer {
           );
 
           if (exp.has_value()) {
-            dst.textures.emplace_back(std::move(exp.value()));
+            textures.emplace_back(std::move(exp.value()));
           }
           else {
             MR_ERROR("Loading Metallic Roughness texture - ", exp.error());
@@ -802,7 +818,7 @@ inline namespace importer {
           if (src.occlusionTexture.has_value()) {
             auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::OcclusionMap, src.occlusionTexture.value());
             if (exp.has_value()) {
-              dst.textures.emplace_back(std::move(exp.value()));
+              textures.emplace_back(std::move(exp.value()));
             }
             else {
               MR_ERROR("Loading Occlusion texture - ", exp.error());
@@ -818,22 +834,30 @@ inline namespace importer {
             src.specularGlossiness->specularGlossinessTexture.value()
           );
           if (exp.has_value()) {
-            dst.textures.emplace_back(std::move(exp.value()));
+            textures.emplace_back(std::move(exp.value()));
           }
           else {
             MR_ERROR("Loading Specular Glossiness texture - ", exp.error());
           }
         }
-
+        },
+        [&] {
         if (src.emissiveTexture.has_value()) {
           auto exp = get_texture_from_gltf(directory, options, *asset, TextureType::EmissiveColor, src.emissiveTexture.value());
           if (exp.has_value()) {
-            dst.textures.emplace_back(std::move(exp.value()));
+            textures.emplace_back(std::move(exp.value()));
           }
           else {
             MR_ERROR("Loading Emissive texture - ", exp.error());
           }
         }
+        });
+
+        dst.textures.resize(textures.size());
+        tbb::parallel_for<int>(0, textures.size(), [&dst, &textures] (int i) {
+          dst.textures[i] = std::move(textures[i]);
+        });
+
       }
     );
 

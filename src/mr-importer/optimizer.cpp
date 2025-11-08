@@ -63,25 +63,42 @@ namespace {
     uint32_t options
       = meshopt_SimplifyPrune
       | (is_sparse ? meshopt_SimplifySparse : 0)
-    ;
+      ;
 
-    result_indices.resize(
-      meshopt_simplify(
-        result_indices.data(),
-        original_indices.data(), original_indices.size(),
-        (float*)positions.data(), positions.size(), sizeof(Position),
-        target_index_count, target_error,
-        options, &lod_error)
-    );
+    {
+      ZoneScopedN("meshopt_simplify");
 
-    meshopt_optimizeVertexCache(result_indices.data(), result_indices.data(), result_indices.size(), positions.size());
+      result_indices.resize(
+        meshopt_simplify(
+          result_indices.data(),
+          original_indices.data(), original_indices.size(),
+          (float*)positions.data(), positions.size(), sizeof(Position),
+          target_index_count, target_error,
+          options, &lod_error)
+        );
+    }
 
-    result_shadow_indices.resize(result_indices.size());
-    meshopt_generateShadowIndexBufferMulti(result_shadow_indices.data(),
-                                           result_indices.data(), result_indices.size(),
-                                           positions.size(),
-                                           streams.data(), streams.size());
-    meshopt_optimizeVertexCache(result_shadow_indices.data(), result_shadow_indices.data(), result_shadow_indices.size(), positions.size());
+    {
+      ZoneScopedN("meshopt_optimizeVertexCache");
+
+      meshopt_optimizeVertexCache(result_indices.data(), result_indices.data(), result_indices.size(), positions.size());
+    }
+
+    {
+      ZoneScopedN("meshopt_generateShadowIndexBufferMulti");
+
+      result_shadow_indices.resize(result_indices.size());
+      meshopt_generateShadowIndexBufferMulti(result_shadow_indices.data(),
+        result_indices.data(), result_indices.size(),
+        positions.size(),
+        streams.data(), streams.size());
+    }
+
+    {
+      ZoneScopedN("meshopt_optimizeVertexCache");
+
+      meshopt_optimizeVertexCache(result_shadow_indices.data(), result_shadow_indices.data(), result_shadow_indices.size(), positions.size());
+    }
 
     size_t original_index_array_size = index_array.size();
     size_t result_indices_size = result_indices.size();
@@ -92,6 +109,8 @@ namespace {
 
     static std::mutex index_array_mutex;
     {
+      ZoneScopedN("Append LOD indices");
+
       std::lock_guard l(index_array_mutex);
       index_array.reserve(index_array.size() + result_indices.size() + result_shadow_indices.size());
       index_array.append_range(std::move(result_indices));
@@ -112,9 +131,9 @@ namespace {
     ZoneScoped;
     if (mesh.attributes.empty()) {
       MR_WARNING(
-          "Mesh has no attributes, but they are considered by `optimize` function."
-          " Consider adding attribute-less path in optimize"
-          );
+        "Mesh has no attributes, but they are considered by `optimize` function."
+        " Consider adding attribute-less path in optimize"
+      );
       mesh.attributes.resize(mesh.positions.size());
     }
 
