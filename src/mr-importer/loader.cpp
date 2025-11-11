@@ -359,7 +359,11 @@ inline namespace importer {
    * Supports URI, embedded vector, and buffer view sources. Returns an
    * ImageData with owned memory; logs warnings for unexpected sources.
    */
-  static std::optional<ImageData> get_image_from_gltf(const std::filesystem::path& directory, Options options, const fastgltf::Asset &asset, const fastgltf::Image &image)
+  static std::optional<ImageData> get_image_from_gltf(
+    const std::filesystem::path& directory,
+    Options options,
+    const fastgltf::Asset &asset,
+    const fastgltf::Image &image)
   {
     ZoneScoped;
 
@@ -441,7 +445,7 @@ inline namespace importer {
             }
           }
           else {
-            ZoneScopedN("WUFFS import");
+            ZoneScopedN("WUFFS import from file");
 
             std::unique_ptr<FILE, int (*)(FILE*)> file (fopen(path.c_str(), "rb"), fclose);
 
@@ -473,7 +477,7 @@ inline namespace importer {
           }
         },
         [&](const fastgltf::sources::Array& array) {
-          ZoneScopedN("WUFFS import");
+          ZoneScopedN("WUFFS import from memory array");
 
           wuffs_aux::DecodeImageCallbacks callbacks;
           wuffs_aux::sync_io::MemoryInput input((const char*)array.bytes.data(), array.bytes.size());
@@ -501,7 +505,7 @@ inline namespace importer {
           new_image.mips.emplace_back((std::byte*)tab.ptr, new_image.byte_size());
         },
         [&](const fastgltf::sources::Vector& vector) {
-          ZoneScopedN("WUFFS import");
+          ZoneScopedN("WUFFS import from memory vector");
 
           wuffs_aux::DecodeImageCallbacks callbacks;
           wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data(), vector.bytes.size());
@@ -537,7 +541,7 @@ inline namespace importer {
                                          // are already loaded into a vector.
             [](auto& arg) { ASSERT(false, "Try to process image from buffer view but not from RAM (should be illegal because of LoadExternalBuffers)", arg); },
             [&](const fastgltf::sources::Array& array) {
-              ZoneScopedN("WUFFS import");
+              ZoneScopedN("WUFFS import from memory array (via buffer view)");
 
               wuffs_aux::DecodeImageCallbacks callbacks;
               wuffs_aux::sync_io::MemoryInput input((const char*)array.bytes.data() + bufferView.byteOffset, bufferView.byteLength);
@@ -565,7 +569,7 @@ inline namespace importer {
               new_image.mips.emplace_back((std::byte*)tab.ptr, new_image.byte_size());
             },
             [&](const fastgltf::sources::Vector& vector) {
-              ZoneScopedN("WUFFS import");
+              ZoneScopedN("WUFFS import from memory vector (via buffer view)");
 
               wuffs_aux::DecodeImageCallbacks callbacks;
               wuffs_aux::sync_io::MemoryInput input((const char*)vector.bytes.data() + bufferView.byteOffset, bufferView.byteLength);
