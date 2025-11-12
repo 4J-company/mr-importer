@@ -39,14 +39,11 @@ static Slang::ComPtr<slang::ISession> get_or_create_session()
                                  slang::CompilerOptionName::UseUpToDateBinaryModule,
                                  {slang::CompilerOptionValueKind::Int, 1}},
   };
-  static constexpr std::array<const char *, 1> search_paths{
-      "/home/michael/Development/Personal/mr-importer-rewrite/bin/shaders",
-  };
   static constexpr slang::SessionDesc session_desc{
       .targets = &target_desc,
       .targetCount = 1,
-      .searchPaths = search_paths.data(),
-      .searchPathCount = search_paths.size(),
+      .searchPaths = nullptr,
+      .searchPathCount = 0,
       .compilerOptionEntries = const_cast<slang::CompilerOptionEntry *>(
           options.data()), // If this shoots me in the foot - life is shit
       .compilerOptionEntryCount = options.size(),

@@ -28,8 +28,11 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   }
 
   // we want any mesh to have at least 47 triangles
-  lod_count =
-      std::ceil(std::log(3 * 47 / indices.size()) / std::log(lod_scale));
+  lod_count = std::ceil(std::log(3 * 47 / indices.size()) / std::log(lod_scale));
+
+  if (lod_count < 1) {
+    return {0, 0};
+  }
 
   if (lod_count > maxlods) {
     lod_scale = std::pow(lod_scale, lod_count / (float)maxlods);
@@ -130,7 +133,7 @@ static std::pair<IndexSpan, IndexSpan> generate_lod(
 
     result_indices_span = IndexSpan(
         index_array.data() + original_index_array_size, result_indices_size);
-    result_indices_span = IndexSpan(
+    result_shadow_indices_span = IndexSpan(
         index_array.data() + original_index_array_size + result_indices_size,
         result_shadow_indices_size);
   }
@@ -160,10 +163,8 @@ Mesh optimize(Mesh mesh)
   result.material = mesh.material;
 
   std::array streams = {
-      meshopt_Stream{ mesh.positions.data(),sizeof(Position),sizeof(Position)                  },
-      meshopt_Stream{mesh.attributes.data(),
-                     sizeof(VertexAttributes),
-                     sizeof(VertexAttributes)},
+      meshopt_Stream {mesh.positions.data(),  sizeof(Position),         sizeof(Position)        },
+      meshopt_Stream {mesh.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
   };
 
   auto [count, ratio] =
@@ -235,6 +236,11 @@ Mesh optimize(Mesh mesh)
       result.attributes.size(),
       sizeof(VertexAttributes),
       remap.data());
+
+  streams = {
+    meshopt_Stream {result.positions.data(),  sizeof(Position),         sizeof(Position)        },
+    meshopt_Stream {result.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
+  };
 
   result.lods[0].indices =
       IndexSpan(result.indices.data(), result.indices.size());
