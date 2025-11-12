@@ -22,13 +22,13 @@
 #include <meshoptimizer.h>
 
 // Internal model-renderer dependencies
-#include <mr-utils/log.hpp>
 #include <mr-math/math.hpp>
+#include <mr-utils/log.hpp>
 
+#include <tbb/concurrent_vector.h>
 #include <tbb/flow_graph.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_for_each.h>
-#include <tbb/concurrent_vector.h>
 
 #include <glm/detail/qualifier.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
