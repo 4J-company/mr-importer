@@ -19,8 +19,6 @@ std::optional<Model> import(const std::filesystem::path &path, Options options)
 {
   ZoneScoped;
 
-  options = Options(options & ~Options::PreferUncompressed);
-
   FlowGraph graph;
   graph.path = std::move(path);
 
@@ -29,6 +27,10 @@ std::optional<Model> import(const std::filesystem::path &path, Options options)
 
   graph.asset_loader->activate();
   graph.graph.wait_for_all();
+
+  if (!graph.model) {
+    return std::nullopt;
+  }
 
   return std::move(*graph.model.get());
 }

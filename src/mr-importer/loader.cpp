@@ -121,9 +121,6 @@ static std::optional<AccessorDescription> get_accessor_by_name(Options options,
       tmp != primitive.attributes.cend()) {
     attr = tmp;
   }
-  else {
-    MR_INFO("Primitive didn't contain {} attribute", name);
-  }
 
   if (primitive.dracoCompression.get() != nullptr &&
       (attr == nullptr || !(options & Options::PreferUncompressed))) {
@@ -136,88 +133,10 @@ static std::optional<AccessorDescription> get_accessor_by_name(Options options,
   }
 
   if (attr == nullptr) {
-    MR_WARNING("primitive didn't contain {} attribute", name);
     return std::nullopt;
   }
 
   return AccessorDescription(get_accessor_from_attribute(asset, *attr), type);
-}
-
-std::array<fastgltf::math::fvec3, 2> getBoundingBoxMinMax(
-    const fastgltf::Asset &asset, const fastgltf::Primitive &primitive)
-{
-  using namespace fastgltf;
-
-  constexpr auto getAccessorMinMax = [](const Accessor &accessor) {
-    constexpr auto copyAccessorData = [](const AccessorBoundsArray &accessor,
-                                          fastgltf::math::fvec3 &out) {
-      ASSERT(accessor.size() == 3);
-      switch (accessor.type()) {
-      case AccessorBoundsArray::BoundsType::float64:
-        out[0] = static_cast<float>(accessor.get<double>(0));
-        out[1] = static_cast<float>(accessor.get<double>(1));
-        out[2] = static_cast<float>(accessor.get<double>(2));
-        return;
-      case AccessorBoundsArray::BoundsType::int64:
-        out[0] = static_cast<float>(accessor.get<int64_t>(0));
-        out[1] = static_cast<float>(accessor.get<int64_t>(1));
-        out[2] = static_cast<float>(accessor.get<int64_t>(2));
-        return;
-      }
-      std::unreachable();
-    };
-
-    auto cwiseMax =
-        []<typename T, std::size_t N>(fastgltf::math::vec<T, N> lhs,
-            const fastgltf::math::vec<T, N> &rhs) -> fastgltf::math::vec<T, N> {
-      [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-        ((lhs.data()[Is] = std::max(lhs.data()[Is], rhs.data()[Is])), ...);
-      }(std::make_index_sequence<N>{});
-      return lhs;
-    };
-
-    std::array<fastgltf::math::fvec3, 2> result;
-    copyAccessorData(accessor.min.value(), get<0>(result));
-    copyAccessorData(accessor.max.value(), get<1>(result));
-
-    if (accessor.normalized) {
-      switch (accessor.componentType) {
-      case ComponentType::Byte:
-        get<0>(result) =
-            cwiseMax(get<0>(result) / 127, fastgltf::math::fvec3(-1));
-        get<1>(result) =
-            cwiseMax(get<1>(result) / 127, fastgltf::math::fvec3(-1));
-        break;
-      case ComponentType::UnsignedByte:
-        get<0>(result) /= 255;
-        get<1>(result) /= 255;
-        break;
-      case ComponentType::Short:
-        get<0>(result) =
-            cwiseMax(get<0>(result) / 32767, fastgltf::math::fvec3(-1));
-        get<1>(result) =
-            cwiseMax(get<1>(result) / 32767, fastgltf::math::fvec3(-1));
-        break;
-      case ComponentType::UnsignedShort:
-        get<0>(result) /= 65535;
-        get<1>(result) /= 65535;
-        break;
-      default:
-        ASSERT(false,
-            "Normalized accessor must be either BYTE, UNSIGNED_BYTE, SHORT, or "
-            "UNSIGNED_SHORT");
-      }
-    }
-    return result;
-  };
-
-  auto accessoropt =
-      get_accessor_by_name(Options::All, asset, primitive, "POSITION");
-  ASSERT(accessoropt.has_value());
-
-  const Accessor &accessor = accessoropt.value().accessor;
-  std::array bound = getAccessorMinMax(accessor);
-  return bound;
 }
 
 static void decode_draco_index_buffer(
@@ -259,19 +178,16 @@ static bool get_attribute_for_all_points(draco::Mesh *mesh,
     std::vector<uint8_t> &out_buffer)
 {
   size_t byte_offset = 0;
-  T values[4] = {0, 0, 0, 0};
+  uint8_t values[64] = {};
   for (draco::PointIndex i(0); i < mesh->num_points(); ++i) {
     const draco::AttributeValueIndex val_index = p_attribute->mapped_index(i);
     if (!p_attribute->ConvertValue<T>(
-            val_index, p_attribute->num_components(), values)) {
-      PANIC(T(),
-          p_attribute->num_components(),
-          p_attribute->attribute_type(),
-          p_attribute->size(),
-          values);
+            val_index, p_attribute->num_components(), (T *)values)) {
       return false;
     }
 
+    ASSERT(byte_offset + sizeof(T) * p_attribute->num_components() <=
+           out_buffer.size());
     memcpy(out_buffer.data() + byte_offset,
         &values[0],
         sizeof(T) * p_attribute->num_components());
@@ -286,6 +202,7 @@ static bool get_attribute_for_all_points(fastgltf::ComponentType component_type,
     std::vector<uint8_t> &out_buffer)
 {
   bool decode_result = false;
+#if 0
   switch (component_type) {
   case fastgltf::ComponentType::UnsignedByte:
     decode_result =
@@ -320,13 +237,66 @@ static bool get_attribute_for_all_points(fastgltf::ComponentType component_type,
         get_attribute_for_all_points<double>(mesh, p_attribute, out_buffer);
     break;
   default:
-    return false;
+    decode_result = false;
+    break;
   }
+
+  if (decode_result) {
+    return decode_result;
+  }
+#endif
+
+  switch (p_attribute->data_type()) {
+  case draco::DataType::DT_UINT8:
+    decode_result =
+        get_attribute_for_all_points<uint8_t>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_INT8:
+    decode_result =
+        get_attribute_for_all_points<int8_t>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_UINT16:
+    decode_result =
+        get_attribute_for_all_points<uint16_t>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_INT16:
+    decode_result =
+        get_attribute_for_all_points<int16_t>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_INT32:
+    decode_result =
+        get_attribute_for_all_points<int32_t>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_UINT32:
+    decode_result =
+        get_attribute_for_all_points<uint32_t>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_INT64:
+    decode_result =
+        get_attribute_for_all_points<int64_t>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_UINT64:
+    decode_result =
+        get_attribute_for_all_points<uint64_t>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_FLOAT32:
+    decode_result =
+        get_attribute_for_all_points<float>(mesh, p_attribute, out_buffer);
+    break;
+  case draco::DataType::DT_FLOAT64:
+    decode_result =
+        get_attribute_for_all_points<double>(mesh, p_attribute, out_buffer);
+    break;
+  default:
+    decode_result = false;
+    break;
+  }
+
+  ASSERT(decode_result, p_attribute->data_type(), component_type);
   return decode_result;
 }
 
-static size_t get_component_size_in_bytes(
-    fastgltf::ComponentType component_type)
+static size_t byte_size(fastgltf::ComponentType component_type)
 {
   switch (component_type) {
   case fastgltf::ComponentType::Byte:
@@ -340,6 +310,28 @@ static size_t get_component_size_in_bytes(
   case fastgltf::ComponentType::Float:
     return 4;
   case fastgltf::ComponentType::Double:
+    return 8;
+  default:
+    return 0;
+  }
+}
+
+static size_t byte_size(draco::DataType component_type)
+{
+  switch (component_type) {
+  case draco::DataType::DT_UINT8:
+  case draco::DataType::DT_INT8:
+    return 1;
+  case draco::DataType::DT_UINT16:
+  case draco::DataType::DT_INT16:
+    return 2;
+  case draco::DataType::DT_UINT32:
+  case draco::DataType::DT_INT32:
+  case draco::DataType::DT_FLOAT32:
+    return 4;
+  case draco::DataType::DT_UINT64:
+  case draco::DataType::DT_INT64:
+  case draco::DataType::DT_FLOAT64:
     return 8;
   default:
     return 0;
@@ -396,18 +388,9 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
   if (primitive.indicesAccessor.has_value()) {
     auto &indices_accessor = asset.accessors[primitive.indicesAccessor.value()];
     size_t component_size =
-        get_component_size_in_bytes(indices_accessor.componentType);
-
-    // Handle component type adjustment for permissive parsing
-    if (mesh->num_points() < std::numeric_limits<uint8_t>::max()) {
-      component_size = 1;
-    }
-    else if (mesh->num_points() < std::numeric_limits<uint16_t>::max()) {
-      component_size = 2;
-    }
-    else {
-      component_size = 4;
-    }
+        std::max<size_t>(byte_size(indices_accessor.componentType),
+            1 + (mesh->num_points() > UINT8_MAX) +
+                ((mesh->num_points() > UINT16_MAX) << 1));
 
     std::vector<uint8_t> index_buffer(mesh->num_faces() * 3 * component_size);
     decode_draco_index_buffer(mesh.get(), component_size, index_buffer);
@@ -446,9 +429,6 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
     if (attribute_name.empty()) {
       continue;
     }
-    else {
-      MR_INFO("{} {}", attribute_name, draco_attribute_id);
-    }
 
     const draco::PointAttribute *draco_attr =
         mesh->GetAttributeByUniqueId(draco_attribute_id);
@@ -467,7 +447,8 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
 
     std::vector<uint8_t> attr_buffer;
     attr_buffer.resize(mesh->num_points() * draco_attr->num_components() *
-                       get_component_size_in_bytes(component_type));
+                       std::max(byte_size(component_type),
+                           byte_size(draco_attr->data_type())));
 
     if (!get_attribute_for_all_points(
             component_type, mesh.get(), draco_attr, attr_buffer)) {
@@ -523,7 +504,6 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
         IndexSpan() // empty shadow indices
     );
 
-    // Calculate AABB from positions
     if (!mesh.positions.empty()) {
       auto min_pos = mesh.positions[0];
       auto max_pos = mesh.positions[0];
@@ -551,29 +531,45 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
     return mesh;
   }
   else {
+    std::atomic_bool error = false;
+    std::mutex attributes_resize_mutex;
     tbb::parallel_invoke(
         [&]() {
           std::optional<AccessorDescription> positions =
               get_accessor_by_name(options, asset, primitive, "POSITION");
-          if (positions.has_value()) {
-            ASSERT(
-                positions.value().accessor.type == fastgltf::AccessorType::Vec3,
-                "Positions are not in vec3 format",
+          if (!positions.has_value() ||
+              positions.value().accessor.type != fastgltf::AccessorType::Vec3) {
+            MR_ERROR("Positions are not in vec3 format ({})",
                 getAccessorTypeName(positions.value().accessor.type));
-
-            mesh.positions.reserve(positions.value().accessor.count);
-            fastgltf::iterateAccessor<glm::vec3>(
-                asset, positions.value().accessor, [&](glm::vec3 v) {
-                  mesh.positions.push_back({v.x, v.y, v.z});
-                });
+            error = true;
+            return;
           }
+          mesh.positions.reserve(positions.value().accessor.count);
+          fastgltf::iterateAccessor<glm::vec3>(asset,
+              positions.value().accessor,
+              [&](glm::vec3 v) { mesh.positions.push_back({v.x, v.y, v.z}); });
+          auto min_pos = mesh.positions[0];
+          auto max_pos = mesh.positions[0];
+          for (const auto &pos : mesh.positions) {
+            min_pos[0] = std::min(min_pos[0], pos[0]);
+            min_pos[1] = std::min(min_pos[1], pos[1]);
+            min_pos[2] = std::min(min_pos[2], pos[2]);
+            max_pos[0] = std::max(max_pos[0], pos[0]);
+            max_pos[1] = std::max(max_pos[1], pos[1]);
+            max_pos[2] = std::max(max_pos[2], pos[2]);
+          }
+          mesh.aabb.min = {min_pos[0], min_pos[1], min_pos[2]};
+          mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
         },
         [&]() {
           std::optional<AccessorDescription> normals =
               get_accessor_by_name(options, asset, primitive, "NORMAL");
           if (normals.has_value()) {
             int count = normals.value().accessor.count;
-            mesh.attributes.resize(count);
+            {
+              std::lock_guard lock(attributes_resize_mutex);
+              mesh.attributes.resize(count);
+            }
             ASSERT(
                 normals.value().accessor.type == fastgltf::AccessorType::Vec3,
                 "Normals are not in vec3 format",
@@ -590,7 +586,10 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
           if (texcoords.has_value()) {
             ASSERT(texcoords.value().accessor.type ==
                    fastgltf::AccessorType::Vec2);
-            mesh.attributes.resize(texcoords.value().accessor.count);
+            {
+              std::lock_guard lock(attributes_resize_mutex);
+              mesh.attributes.resize(texcoords.value().accessor.count);
+            }
             fastgltf::iterateAccessorWithIndex<glm::vec2>(
                 asset, texcoords.value().accessor, [&](glm::vec2 v, int index) {
                   mesh.attributes[index].texcoord = {v.x, v.y};
@@ -598,7 +597,13 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
           }
         },
         [&]() {
-          ASSERT(primitive.indicesAccessor.has_value());
+          if (!primitive.indicesAccessor.has_value()) {
+            MR_ERROR(
+                "Primitive didn't contain indices - we don't support that");
+            error = true;
+            return;
+          }
+
           auto &idxAccessor =
               asset.accessors[primitive.indicesAccessor.value()];
           mesh.indices.resize(idxAccessor.count);
@@ -611,19 +616,6 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
               IndexSpan() // empty shadow indices
           );
         },
-        [&]() {
-          auto [min, max] = getBoundingBoxMinMax(asset, primitive);
-          mesh.aabb.min = {
-              min.x(),
-              min.y(),
-              min.z(),
-          };
-          mesh.aabb.max = {
-              max.x(),
-              max.y(),
-              max.z(),
-          };
-        },
         [&primitive, &mesh]() {
           if (primitive.materialIndex) {
             mesh.material = primitive.materialIndex.value();
@@ -632,9 +624,15 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
             MR_ERROR("Mesh has no material specified");
           }
         });
+    if (error) {
+      return std::nullopt;
+    }
   }
 
-  ASSERT(mesh.positions.size() == mesh.attributes.size());
+  if (mesh.attributes.size() != 0 &&
+      mesh.positions.size() != mesh.attributes.size()) {
+    return std::nullopt;
+  }
 
   return mesh;
 }
@@ -700,50 +698,26 @@ static std::vector<Mesh> get_meshes_from_asset(
                     scales.push_back({v.x(), v.y(), v.z()});
                   });
 
-              transforms[*node.meshIndex].resize(scales.size());
+              transforms[*node.meshIndex].reserve(scales.size());
               for (const auto &[t, r, s] :
                   std::views::zip(translations, rotations, scales)) {
                 fastgltf::math::fmat4x4 res =
                     scale(rotate(translate(matrix, t), r), s);
                 transforms[*node.meshIndex].push_back({
-                    res[0][0],
-                    res[1][0],
-                    res[2][0],
-                    res[3][0],
-                    res[0][1],
-                    res[1][1],
-                    res[2][1],
-                    res[3][1],
-                    res[0][2],
-                    res[1][2],
-                    res[2][2],
-                    res[3][2],
-                    res[0][3],
-                    res[1][3],
-                    res[2][3],
-                    res[3][3],
+                    res[0][0], res[1][0], res[2][0], res[3][0],
+                    res[0][1], res[1][1], res[2][1], res[3][1],
+                    res[0][2], res[1][2], res[2][2], res[3][2],
+                    res[0][3], res[1][3], res[2][3], res[3][3],
                 });
               }
             }
 
             glm::mat4 t = glm::make_mat4(matrix.data());
             transforms[*node.meshIndex].push_back({
-                t[0][0],
-                t[1][0],
-                t[2][0],
-                t[3][0],
-                t[0][1],
-                t[1][1],
-                t[2][1],
-                t[3][1],
-                t[0][2],
-                t[1][2],
-                t[2][2],
-                t[3][2],
-                t[0][3],
-                t[1][3],
-                t[2][3],
-                t[3][3],
+                t[0][0], t[1][0], t[2][0], t[3][0],
+                t[0][1], t[1][1], t[2][1], t[3][1],
+                t[0][2], t[1][2], t[2][2], t[3][2],
+                t[0][3], t[1][3], t[2][3], t[3][3],
             });
           }
         });
@@ -762,7 +736,7 @@ static std::vector<Mesh> get_meshes_from_asset(
         std::optional<Mesh> mesh_opt =
             get_mesh_from_primitive(options, *asset, primitive);
         if (mesh_opt.has_value()) {
-          mesh_opt->transforms = std::move(transforms[i]);
+          mesh_opt->transforms = transforms[i];
           mesh_opt->name = std::move(gltfMesh.name);
           meshes.emplace_back(std::move(mesh_opt.value()));
         }
@@ -838,7 +812,6 @@ static std::optional<ImageData> get_image_from_gltf(
 
   ImageData new_image{};
 
-  // Helper function implementations
   auto load_dds_from_file = [](const std::string &path,
                                 ImageData &new_image) -> bool {
     ZoneScopedN("DDS import from file");
@@ -934,7 +907,6 @@ static std::optional<ImageData> get_image_from_gltf(
       result = ktxTexture_GetImageOffset(
           (ktxTexture *)ktx_texture, mip_index, 0, 0, &copy_buffer_offset);
       if (result != KTX_SUCCESS) {
-        // Continue with other mips rather than failing completely
         continue;
       }
 
@@ -1000,31 +972,45 @@ static std::optional<ImageData> get_image_from_gltf(
 
     std::unique_ptr<FILE, int (*)(FILE *)> file(
         fopen(path.c_str(), "rb"), fclose);
-    if (file.get() == nullptr)
+    if (file.get() == nullptr) {
+      MR_INFO("Failed to open image file {}", path.c_str());
       return false;
+    }
 
     wuffs_aux::DecodeImageCallbacks callbacks;
     wuffs_aux::sync_io::FileInput input(file.get());
     wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
 
-    if (!img.error_message.empty())
+    if (!img.error_message.empty()) {
+      MR_INFO("Failed to parse image: {}", img.error_message);
       return false;
-    if (!img.pixbuf.pixcfg.is_valid())
+    }
+    if (!img.pixbuf.pixcfg.is_valid()) {
+      MR_INFO("Failed to parse image for unknown reason");
       return false;
+    }
 
     wuffs_base__table_u8 tab = img.pixbuf.plane(0);
     wuffs_base__pixel_format format = img.pixbuf.pixel_format();
 
-    if (format.bits_per_pixel() % 8 != 0)
+    if (format.bits_per_pixel() % 8 != 0) {
+      MR_INFO("Image format bits_per_pixel % 8 != 0. "
+              "To handle such cases you'd need to change public API from "
+              "byte_size to bit_size");
       return false;
+    }
 
     new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
     new_image.width = tab.width / new_image.bytes_per_pixel;
     new_image.height = tab.height;
 
     if (new_image.width <= 0 || new_image.height <= 0 ||
-        new_image.bytes_per_pixel <= 0)
+        new_image.bytes_per_pixel <= 0) {
+      MR_INFO("Image format bits_per_pixel % 8 != 0. "
+              "To handle such cases you'd need to change public API from "
+              "byte_size to bit_size");
       return false;
+    }
 
     new_image.pixels.reset((std::byte *)img.pixbuf_mem_owner.release());
     new_image.mips.emplace_back(new_image.pixels.get(), new_image.byte_size());
@@ -1041,51 +1027,56 @@ static std::optional<ImageData> get_image_from_gltf(
     wuffs_aux::sync_io::MemoryInput input((const char *)data, size);
     wuffs_aux::DecodeImageResult img = wuffs_aux::DecodeImage(callbacks, input);
 
-    if (!img.error_message.empty())
+    if (!img.error_message.empty()) {
+      MR_INFO("Failed to parse image: {}", img.error_message);
       return false;
-    if (!img.pixbuf.pixcfg.is_valid())
+    }
+    if (!img.pixbuf.pixcfg.is_valid()) {
+      MR_INFO("Failed to parse image for unknown reason");
       return false;
+    }
 
     wuffs_base__table_u8 tab = img.pixbuf.plane(0);
     wuffs_base__pixel_format format = img.pixbuf.pixel_format();
 
-    if (format.bits_per_pixel() % 8 != 0)
+    if (format.bits_per_pixel() % 8 != 0) {
+      MR_INFO("Image format bits_per_pixel % 8 != 0. "
+              "To handle such cases you'd need to change public API from "
+              "byte_size to bit_size");
       return false;
+    }
 
     new_image.bytes_per_pixel = format.bits_per_pixel() / 8;
     new_image.width = tab.width / new_image.bytes_per_pixel;
     new_image.height = tab.height;
 
     if (new_image.width <= 0 || new_image.height <= 0 ||
-        new_image.bytes_per_pixel <= 0)
+        new_image.bytes_per_pixel <= 0) {
       return false;
+    }
 
     new_image.pixels.reset((std::byte *)img.pixbuf_mem_owner.release());
     new_image.mips.emplace_back((std::byte *)tab.ptr, new_image.byte_size());
     return true;
   };
 
-  // Helper function to attempt WUFFS loading with fallback for ambiguous mime
-  // types
   auto try_load_with_fallback = [&](const std::byte *data,
                                     size_t size,
                                     fastgltf::MimeType mimeType,
                                     const std::string &context_info =
                                         "") -> bool {
-    // For specific formats, use direct loading
     if (mimeType == fastgltf::MimeType::DDS) {
       return load_dds_from_memory(data, size, new_image, context_info);
     }
-    else if (mimeType == fastgltf::MimeType::KTX2) {
+
+    if (mimeType == fastgltf::MimeType::KTX2) {
       return load_ktx2_from_memory(data, size, new_image, context_info);
     }
 
-    // Try WUFFS first for everything else
     if (try_load_wuffs_from_memory(data, size, new_image, context_info)) {
       return true;
     }
 
-    // If WUFFS failed and mime type is ambiguous, try DDS then KTX2 as fallback
     if (mimeType == fastgltf::MimeType::GltfBuffer ||
         mimeType == fastgltf::MimeType::OctetStream) {
       if (load_dds_from_memory(data, size, new_image, context_info)) {
@@ -1099,25 +1090,22 @@ static std::optional<ImageData> get_image_from_gltf(
     return false;
   };
 
-  // Helper for file loading with fallback
   auto try_load_file_with_fallback = [&](const std::string &path,
                                          fastgltf::MimeType mimeType) -> bool {
-    // For specific formats, use direct loading
     if (mimeType == fastgltf::MimeType::DDS ||
         std::filesystem::path(path).extension() == ".dds") {
       return load_dds_from_file(path, new_image);
     }
-    else if (mimeType == fastgltf::MimeType::KTX2 ||
-             std::filesystem::path(path).extension() == ".ktx2") {
+
+    if (mimeType == fastgltf::MimeType::KTX2 ||
+        std::filesystem::path(path).extension() == ".ktx2") {
       return load_ktx2_from_file(path, new_image);
     }
 
-    // Try WUFFS first for everything else
     if (try_load_wuffs_from_file(path, new_image)) {
       return true;
     }
 
-    // If WUFFS failed and mime type is ambiguous, try DDS then KTX2 as fallback
     if (mimeType == fastgltf::MimeType::GltfBuffer ||
         mimeType == fastgltf::MimeType::OctetStream) {
       MR_INFO(
@@ -1309,6 +1297,9 @@ static std::expected<TextureData, std::string_view> get_texture_from_gltf(
   if (tex.basisuImageIndex.has_value() &&
       (!(options & Options::PreferUncompressed) || img_idx == ~0z)) {
     img_idx = tex.basisuImageIndex.value();
+  }
+  if (tex.webpImageIndex.has_value() && img_idx == ~0z) {
+    img_idx = tex.webpImageIndex.value();
   }
   if (img_idx == ~0z) {
     return std::unexpected("Texture is in unsupported format");
