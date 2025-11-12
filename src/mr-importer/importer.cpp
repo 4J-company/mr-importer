@@ -6,28 +6,31 @@
 
 namespace mr {
 inline namespace importer {
-  /**
-   * \brief High-level import entry point.
-   *
-   * Loads an asset from disk, optionally optimizes meshes, and returns the result.
-   * \param path Path to a source asset (e.g. glTF file).
-   * \param options Import behavior flags, see \ref Options.
-   * \return Imported \ref Model or std::nullopt if loading failed.
-   */
-  std::optional<Model> import(const std::filesystem::path& path, Options options)
-  {
-    ZoneScoped;
+/**
+ * \brief High-level import entry point.
+ *
+ * Loads an asset from disk, optionally optimizes meshes, and returns the
+ * result.
+ * \param path Path to a source asset (e.g. glTF file).
+ * \param options Import behavior flags, see \ref Options.
+ * \return Imported \ref Model or std::nullopt if loading failed.
+ */
+std::optional<Model> import(const std::filesystem::path &path, Options options)
+{
+  ZoneScoped;
 
-    FlowGraph graph;
-    graph.path = std::move(path);
+  options = Options(options & ~Options::PreferUncompressed);
 
-    add_loader_nodes(graph, options);
-    add_optimizer_nodes(graph, options);
+  FlowGraph graph;
+  graph.path = std::move(path);
 
-    graph.asset_loader->activate();
-    graph.graph.wait_for_all();
+  add_loader_nodes(graph, options);
+  add_optimizer_nodes(graph, options);
 
-    return std::move(*graph.model.get());
-  }
+  graph.asset_loader->activate();
+  graph.graph.wait_for_all();
+
+  return std::move(*graph.model.get());
+}
 } // namespace importer
 } // namespace mr
