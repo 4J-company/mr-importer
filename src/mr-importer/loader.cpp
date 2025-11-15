@@ -876,18 +876,21 @@ static std::optional<ImageData> get_image_from_gltf(
                                  ImageData &new_image) -> bool {
     ZoneScopedN("KTX import from file");
 
-    ktxTexture2 *ktx_texture;
+    ktxTexture2 *tex;
     KTX_error_code result = ktxTexture_CreateFromNamedFile(path.c_str(),
         KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
-        (ktxTexture **)&ktx_texture);
+        (ktxTexture **)&tex);
 
+    std::unique_ptr<ktxTexture2, void (*)(ktxTexture2*)> ktx_texture {
+      tex,
+      +[](ktxTexture2 *ptr) { ktxTexture_Destroy((ktxTexture *)ptr); }
+    };
     if (result != KTX_SUCCESS)
       return false;
 
-    if (ktxTexture2_NeedsTranscoding(ktx_texture)) {
-      result = ktxTexture2_TranscodeBasis(ktx_texture, KTX_TTF_BC7_RGBA, 0);
+    if (ktxTexture2_NeedsTranscoding(ktx_texture.get())) {
+      result = ktxTexture2_TranscodeBasis(ktx_texture.get(), KTX_TTF_BC7_RGBA, 0);
       if (result != KTX_SUCCESS) {
-        ktxTexture_Destroy((ktxTexture *)ktx_texture);
         return false;
       }
     }
@@ -895,9 +898,11 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.height = ktx_texture->baseHeight;
     new_image.width = ktx_texture->baseWidth;
     new_image.depth = ktx_texture->baseDepth;
-    new_image.format = (vk::Format)ktxTexture2_GetVkFormat(ktx_texture);
+    new_image.format = (vk::Format)ktxTexture2_GetVkFormat(ktx_texture.get());
     new_image.bytes_per_pixel = format_byte_size(new_image.format);
-    new_image.pixels.reset((std::byte *)ktx_texture->pData);
+
+    new_image.pixels = std::make_unique_for_overwrite<std::byte[]>(ktx_texture->dataSize);
+    std::memcpy(new_image.pixels.get(), ktx_texture->pData, ktx_texture->dataSize);
 
     for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels;
         mip_index++) {
@@ -905,7 +910,7 @@ static std::optional<ImageData> get_image_from_gltf(
       uint32_t copy_height = new_image.height >> mip_index;
       ktx_size_t copy_buffer_offset = 0;
       result = ktxTexture_GetImageOffset(
-          (ktxTexture *)ktx_texture, mip_index, 0, 0, &copy_buffer_offset);
+          (ktxTexture *)ktx_texture.get(), mip_index, 0, 0, &copy_buffer_offset);
       if (result != KTX_SUCCESS) {
         continue;
       }
@@ -923,20 +928,24 @@ static std::optional<ImageData> get_image_from_gltf(
                                    const std::string &context) -> bool {
     ZoneScopedN("KTX import from memory");
 
-    ktxTexture2 *ktx_texture;
+    ktxTexture2 *tex;
     KTX_error_code result =
         ktxTexture2_CreateFromMemory((const ktx_uint8_t *)data,
             size,
             KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
-            &ktx_texture);
+            &tex);
+
+    std::unique_ptr<ktxTexture2, void (*)(ktxTexture2*)> ktx_texture {
+      tex,
+      +[](ktxTexture2 *ptr) { ktxTexture_Destroy((ktxTexture *)ptr); }
+    };
 
     if (result != KTX_SUCCESS)
       return false;
 
-    if (ktxTexture2_NeedsTranscoding(ktx_texture)) {
-      result = ktxTexture2_TranscodeBasis(ktx_texture, KTX_TTF_BC7_RGBA, 0);
+    if (ktxTexture2_NeedsTranscoding(ktx_texture.get())) {
+      result = ktxTexture2_TranscodeBasis(ktx_texture.get(), KTX_TTF_BC7_RGBA, 0);
       if (result != KTX_SUCCESS) {
-        ktxTexture_Destroy((ktxTexture *)ktx_texture);
         return false;
       }
     }
@@ -944,9 +953,11 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.height = ktx_texture->baseHeight;
     new_image.width = ktx_texture->baseWidth;
     new_image.depth = ktx_texture->baseDepth;
-    new_image.format = (vk::Format)ktxTexture2_GetVkFormat(ktx_texture);
+    new_image.format = (vk::Format)ktxTexture2_GetVkFormat(ktx_texture.get());
     new_image.bytes_per_pixel = format_byte_size(new_image.format);
-    new_image.pixels.reset((std::byte *)ktx_texture->pData);
+
+    new_image.pixels = std::make_unique_for_overwrite<std::byte[]>(ktx_texture->dataSize);
+    std::memcpy(new_image.pixels.get(), ktx_texture->pData, ktx_texture->dataSize);
 
     for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels;
         mip_index++) {
@@ -954,7 +965,7 @@ static std::optional<ImageData> get_image_from_gltf(
       uint32_t copy_height = new_image.height >> mip_index;
       ktx_size_t copy_buffer_offset = 0;
       result = ktxTexture_GetImageOffset(
-          (ktxTexture *)ktx_texture, mip_index, 0, 0, &copy_buffer_offset);
+          (ktxTexture *)ktx_texture.get(), mip_index, 0, 0, &copy_buffer_offset);
       if (result != KTX_SUCCESS) {
         continue;
       }
