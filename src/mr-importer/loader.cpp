@@ -769,7 +769,7 @@ static void resize_image(ImageData &image,
   size_t desired_pixel_size = desired_component_number * component_size;
 
   size_t desired_byte_size =
-      image.byte_size() / component_number * desired_component_number;
+      pixel_size * pixel_count / component_number * desired_component_number;
   std::unique_ptr<std::byte[]> new_ptr =
       std::make_unique<std::byte[]>(desired_byte_size);
 
@@ -786,6 +786,7 @@ static void resize_image(ImageData &image,
   }
 
   image.pixels = std::move(new_ptr);
+  image.pixels.size(desired_byte_size);
 
   int offset = 0;
   for (int i = 0; i < image.mips.size(); i++) {
@@ -833,9 +834,14 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.bytes_per_pixel = dds::getBitsPerPixel(dds_image.format) / 8;
 
     new_image.pixels.reset((std::byte *)dds_image.data.release());
+    new_image.pixels.size(new_image.bytes_per_pixel * new_image.width * new_image.height);
+    int size = 0;
     for (auto &mip : dds_image.mipmaps) {
-      new_image.mips.emplace_back(std::as_bytes(mip));
+      auto tmp = std::as_bytes(mip);
+      size += mip.size_bytes();
+      new_image.mips.emplace_back(tmp);
     }
+    new_image.pixels.size(size);
 
     return new_image.width > 0 && new_image.height > 0 &&
            new_image.bytes_per_pixel > 0;
@@ -865,8 +871,11 @@ static std::optional<ImageData> get_image_from_gltf(
 
     new_image.pixels.reset((std::byte *)dds_image.data.release());
     for (auto &mip : dds_image.mipmaps) {
+      auto tmp = std::as_bytes(mip);
+      size += mip.size_bytes();
       new_image.mips.emplace_back(std::as_bytes(mip));
     }
+    new_image.pixels.size(size);
 
     return new_image.width > 0 && new_image.height > 0 &&
            new_image.bytes_per_pixel > 0;
@@ -902,6 +911,7 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.bytes_per_pixel = format_byte_size(new_image.format);
 
     new_image.pixels = std::make_unique_for_overwrite<std::byte[]>(ktx_texture->dataSize);
+    new_image.pixels.size(ktx_texture->dataSize);
     std::memcpy(new_image.pixels.get(), ktx_texture->pData, ktx_texture->dataSize);
 
     for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels;
@@ -957,6 +967,7 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.bytes_per_pixel = format_byte_size(new_image.format);
 
     new_image.pixels = std::make_unique_for_overwrite<std::byte[]>(ktx_texture->dataSize);
+    new_image.pixels.size(ktx_texture->dataSize);
     std::memcpy(new_image.pixels.get(), ktx_texture->pData, ktx_texture->dataSize);
 
     for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels;
@@ -1024,7 +1035,8 @@ static std::optional<ImageData> get_image_from_gltf(
     }
 
     new_image.pixels.reset((std::byte *)img.pixbuf_mem_owner.release());
-    new_image.mips.emplace_back(new_image.pixels.get(), new_image.byte_size());
+    new_image.pixels.size(new_image.width * new_image.height * new_image.bytes_per_pixel);
+    new_image.mips.emplace_back(new_image.pixels.get(), new_image.pixels.size());
     return true;
   };
 
@@ -1067,7 +1079,8 @@ static std::optional<ImageData> get_image_from_gltf(
     }
 
     new_image.pixels.reset((std::byte *)img.pixbuf_mem_owner.release());
-    new_image.mips.emplace_back((std::byte *)tab.ptr, new_image.byte_size());
+    new_image.pixels.size(new_image.width * new_image.height * new_image.bytes_per_pixel);
+    new_image.mips.emplace_back((std::byte *)tab.ptr, new_image.pixels.size());
     return true;
   };
 

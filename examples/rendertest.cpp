@@ -11,5 +11,15 @@ int main(int argc, char **argv) {
   }
 
   mr::Model model {std::filesystem::path(argv[1])};
+
+  // make sure texture are readable
+  for (const auto& mtl : model.materials) {
+    for (const auto& tex : mtl.textures) {
+      for (int i = 0; i < tex.image.pixels.size(); i++) {
+        volatile auto tmp = tex.image.pixels[i];
+      }
+    }
+  }
+
   render(model.meshes);
 }

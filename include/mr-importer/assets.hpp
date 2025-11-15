@@ -119,12 +119,24 @@ inline namespace importer {
     };
   };
 
+  template <typename T>
+  struct SizedUniqueArray : public std::unique_ptr<T[]> {
+    using std::unique_ptr<T[]>::unique_ptr;
+    using std::unique_ptr<T[]>::operator=;
+
+  private:
+    size_t _size = 0;
+
+  public:
+    size_t size() const noexcept { return _size; }
+    void size(size_t size) noexcept { _size = size; }
+  };
 
   // material-related data
   /** \brief Raw image data stored as linear RGBA float pixels. */
   struct ImageData {
     // unique ptr because memory is allocated by the backend and passed to us
-    std::unique_ptr<std::byte[]> pixels;
+    SizedUniqueArray<std::byte> pixels;
     InplaceVector<std::span<const std::byte>, 16> mips;
     int32_t width = 0;
     int32_t height = 0;
@@ -141,7 +153,6 @@ inline namespace importer {
 
     uint32_t pixel_byte_size() const noexcept;
     constexpr uint32_t num_of_pixels() const noexcept { return width * height; }
-    uint32_t byte_size() const noexcept { return num_of_pixels() * pixel_byte_size(); }
     constexpr mr::Extent extent() const noexcept { return {uint32_t(width), uint32_t(height)}; }
   };
 
@@ -211,19 +222,6 @@ inline namespace importer {
   };
 
   // TODO: animation-related data
-
-  template <typename T>
-  struct SizedUniqueArray : public std::unique_ptr<T[]> {
-    using std::unique_ptr<T[]>::unique_ptr;
-    using std::unique_ptr<T[]>::operator=;
-
-  private:
-    size_t _size = 0;
-
-  public:
-    size_t size() const noexcept { return _size; }
-    void size(size_t size) noexcept { _size = size; }
-  };
 
   /**
    * \brief Compiled shader artifact.
