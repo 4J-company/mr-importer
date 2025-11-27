@@ -1234,7 +1234,7 @@ static std::optional<ImageData> get_image_from_gltf(
       },
       image.data);
 
-  // Format fallback logic (unchanged from your original code)
+  // Format fallback logic
   if (new_image.format == vk::Format()) {
     switch (new_image.bytes_per_pixel) {
     case 1:
@@ -1364,7 +1364,7 @@ static std::expected<TextureData, std::string_view> get_texture_from_gltf(
     };
   };
 
-  return TextureData(std::move(img_data_opt.value()), type, sampler);
+  return TextureData(std::move(img_data_opt.value()), type, sampler, tex.name);
 }
 
 /** Convert normalized vec4 to Color. */

@@ -19,17 +19,10 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
 
   constexpr int maxlods = 3;
 
-  float lod_scale = meshopt_simplifyScale(
-      (float *)positions.data(), positions.size(), sizeof(Position));
-  size_t lod_count = 0;
-
-  if (lod_scale > 1) {
-    return {0, 0};
-  }
+  float lod_scale = 0.1;
+  size_t lod_count = lod_count = std::ceil(std::log(3.f * 47 / indices.size()) / std::log(lod_scale));
 
   // we want any mesh to have at least 47 triangles
-  lod_count = std::ceil(std::log(3 * 47 / indices.size()) / std::log(lod_scale));
-
   if (lod_count < 1) {
     return {0, 0};
   }
@@ -114,10 +107,6 @@ static std::pair<IndexSpan, IndexSpan> generate_lod(
         positions.size());
   }
 
-  size_t original_index_array_size = index_array.size();
-  size_t result_indices_size = result_indices.size();
-  size_t result_shadow_indices_size = result_shadow_indices.size();
-
   IndexSpan result_indices_span;
   IndexSpan result_shadow_indices_span;
 
@@ -126,8 +115,11 @@ static std::pair<IndexSpan, IndexSpan> generate_lod(
     ZoneScopedN("Append LOD indices");
 
     std::lock_guard l(index_array_mutex);
-    index_array.reserve(index_array.size() + result_indices.size() +
-                        result_shadow_indices.size());
+
+    size_t original_index_array_size = index_array.size();
+    size_t result_indices_size = result_indices.size();
+    size_t result_shadow_indices_size = result_shadow_indices.size();
+
     index_array.append_range(std::move(result_indices));
     index_array.append_range(std::move(result_shadow_indices));
 
@@ -169,6 +161,8 @@ Mesh optimize(Mesh mesh)
 
   auto [count, ratio] =
       determine_lod_count_and_ratio(mesh.positions, mesh.lods[0].indices);
+  ZoneValue(count);
+  ZoneValue(ratio);
   result.indices.reserve(2 * mesh.indices.size() * (count + 1));
   result.lods.resize(count + 1);
 

@@ -180,10 +180,11 @@ inline namespace importer {
     ImageData image;
     TextureType type;
     SamplerData sampler;
+    std::string name;
 
     TextureData() = default;
-    TextureData(ImageData &&image, TextureType type, SamplerData sampler)
-      : image(std::move(image)), type(type), sampler(sampler) {}
+    TextureData(ImageData &&image, TextureType type, SamplerData sampler, std::string_view name)
+      : image(std::move(image)), type(type), sampler(sampler), name(name.begin(), name.end()) {}
     TextureData(TextureData&&) noexcept = default;
     TextureData& operator=(TextureData&&) noexcept = default;
     TextureData(const TextureData&) noexcept = delete;
