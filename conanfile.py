@@ -4,7 +4,7 @@ from conan.tools.build import check_min_cppstd
 
 class mr_importerRecipe(ConanFile):
     name = "mr-importer"
-    version = "2.9.0"
+    version = "2.9.3"
     package_type = "library"
 
     license = "MIT"
@@ -35,7 +35,7 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("onetbb/2022.2.0")
 
-        self.requires("mr-math/1.1.4")
+        self.requires("mr-math/[>1.1.4]")
         self.requires("mr-utils/1.1.2")
 
         self.requires("tracy/0.12.2")
