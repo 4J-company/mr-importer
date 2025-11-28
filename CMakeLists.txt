@@ -6,7 +6,7 @@ set(MR_IMPORTER_LIB_NAME mr-importer-lib)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(MR_IMPORTER_BUILD_TESTS    "Whether tests are built" OFF)
-option(MR_IMPORTER_BUILD_EXAMPLES "Whether examples are built" OFF)
+option(MR_IMPORTER_BUILD_EXAMPLES "Whether examples are built" ON)
 
 project(
   ${MR_IMPORTER_PROJECT_NAME}

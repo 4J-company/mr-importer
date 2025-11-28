@@ -39,4 +39,8 @@ bin/
 CMakeUserPresets.json
 
 *.ini
+*.png
+*.glb
+*.csv
+*.py
 CMakeUserPresets.json

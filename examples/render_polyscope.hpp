@@ -66,7 +66,7 @@ TemporaryMesh extractMeshlet(const mr::Mesh& mesh, const mr::Mesh::LOD& lod, siz
     return result;
 }
 
-inline void render_meshlets(const std::vector<mr::Mesh> &meshes, int lodnumber) {
+inline void render_meshlets(const mr::Model &model, int lodnumber) {
   polyscope::init();
 
   // Disable ground
@@ -74,8 +74,8 @@ inline void render_meshlets(const std::vector<mr::Mesh> &meshes, int lodnumber) 
   // Set camera to FPS-like
   polyscope::view::setNavigateStyle(polyscope::NavigateStyle::FirstPerson);
 
-  for (int i = 0; i < meshes.size(); i++) {
-    auto& mesh = meshes[i];
+  for (int i = 0; i < model.meshes.size(); i++) {
+    auto& mesh = model.meshes[i];
 
     auto& lod = mesh.lods.size() - 1 < lodnumber ? mesh.lods.back() : mesh.lods[lodnumber];
     auto& pos = mesh.positions;
@@ -106,17 +106,20 @@ inline void render_meshlets(const std::vector<mr::Mesh> &meshes, int lodnumber) 
   polyscope::show();
 }
 
-inline void render(const std::vector<mr::Mesh> &meshes, int lodnumber) {
+inline void render(const mr::Model &model, int lodnumber) {
   polyscope::init();
 
   // Disable ground
   polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+  polyscope::options::enableVSync = false;
+  polyscope::options::maxFPS = -1;
+
   // Set camera to FPS-like
   polyscope::view::setNavigateStyle(polyscope::NavigateStyle::FirstPerson);
 
   float xoffset = 0;
-  for (int i = 0; i < meshes.size(); i++) {
-    auto& mesh = meshes[i];
+  for (int i = 0; i < model.meshes.size(); i++) {
+    auto& mesh = model.meshes[i];
 
     auto& lod = mesh.lods.size() - 1 < lodnumber ? mesh.lods.back() : mesh.lods[lodnumber];
     auto& pos = mesh.positions;
@@ -133,10 +136,128 @@ inline void render(const std::vector<mr::Mesh> &meshes, int lodnumber) {
         mrt[0][3], mrt[1][3], mrt[2][3], mrt[3][3],
       };
       meshptr->setTransform(t);
-      // meshptr->setMaterial("normal");
-      meshptr->setEdgeWidth(1.0);  // Enable edge rendering by default
+
+#if 0
+      std::vector<glm::vec2> uvs;
+      for (auto attr : mesh.attributes) {
+        uvs.emplace_back(
+            attr.texcoord.x(),
+            attr.texcoord.y()
+        );
+      }
+      auto *qParam = meshptr->addVertexParameterizationQuantity("UV", uvs);
+
+      if (mesh.material == -1) {
+        printf("Mesh has no material\n");
+        continue;
+      }
+
+      int index = 0;
+      auto &textures = model.materials[mesh.material].textures;
+      while (index < textures.size() && textures[index].type != mr::importer::TextureType::BaseColor) {
+        index++;
+      }
+      if (index == textures.size()) {
+        printf("Mesh has no base color texture\n");
+        continue;
+      }
+
+      auto &texture = textures[index];
+      auto &image = texture.image;
+
+      size_t pixels = image.mips[0].size() / image.bytes_per_pixel;
+      std::vector<glm::vec3> colors;
+      colors.resize(pixels);
+
+      if (image.format == vk::Format::eR8G8B8Srgb) {
+        std::memcpy(colors.data(), image.pixels.get(), image.mips[0].size());
+      }
+      else if (image.format == vk::Format::eR8G8B8A8Srgb) {
+        for (int i = 0; i < pixels; i++) {
+          colors[i] = {
+            (unsigned char)image.mips[0][4 * i + 0] / 256.f,
+            (unsigned char)image.mips[0][4 * i + 1] / 256.f,
+            (unsigned char)image.mips[0][4 * i + 2] / 256.f,
+          };
+        }
+      }
+      else if (image.format == vk::Format::eB8G8R8A8Srgb) {
+        for (int i = 0; i < pixels; i++) {
+          colors[i] = {
+            (unsigned char)image.mips[0][4 * i + 2] / 256.f,
+            (unsigned char)image.mips[0][4 * i + 1] / 256.f,
+            (unsigned char)image.mips[0][4 * i + 0] / 256.f,
+          };
+        }
+      }
+      else if (image.format == vk::Format::eB8G8R8Srgb) {
+        for (int i = 0; i < pixels; i++) {
+          colors[i] = {
+            (unsigned char)image.mips[0][3 * i + 2] / 256.f,
+            (unsigned char)image.mips[0][3 * i + 1] / 256.f,
+            (unsigned char)image.mips[0][3 * i + 0] / 256.f,
+          };
+        }
+      }
+      else {
+          printf("Bullshit format: %d %s\n", image.format, fmt.c_str());
+          continue;
+      }
+
+      auto *qColor = meshptr->addTextureColorQuantity("tColor", *qParam, image.width, image.height, colors, polyscope::ImageOrigin::UpperLeft);
+      qColor->setFilterMode(texture.sampler.mag == vk::Filter::eNearest ? polyscope::FilterMode::Nearest : polyscope::FilterMode::Linear);
+      qColor->setEnabled(true);
+#endif
     }
   }
 
+#if 1
+  // Get initial camera parameters for reference distance
+  polyscope::CameraParameters params_old = polyscope::view::getCameraParametersForCurrentView();
+  glm::vec3 initialPos = params_old.getPosition();
+  float initialDistance = glm::length(initialPos);
+
+  // Define distance range (from very close to very distant)
+  std::vector<float> distances;
+  distances.push_back(initialDistance / 2);
+  for (int k = 0; k < 7; k++) {
+    distances.push_back(initialDistance * std::pow(2.5, k));
+  }
+
+  for (int i = 0; i < 8; i++) {
+    for (int j = -1; j < 2; j++) {
+      for (float currentDistance : distances) {
+        // Calculate angles in radians
+        float horizontalAngle = glm::radians(45.0f * i);
+        float verticalAngle = glm::radians(45.0f * j);
+
+        printf("%f\n", currentDistance);
+
+        // Calculate camera position on sphere
+        float x = currentDistance * cos(verticalAngle) * sin(horizontalAngle);
+        float y = currentDistance * sin(verticalAngle);
+        float z = currentDistance * cos(verticalAngle) * cos(horizontalAngle);
+
+        glm::vec3 cameraPos(x, y, z);
+        glm::vec3 target(0.0f, 1.0f, 0.0f); // Look at origin
+        glm::vec3 worldUp(0.0f, 1.0f, 0.0f); // Y-up world
+
+        // Create view matrix using lookAt
+        glm::mat4 viewMatrix = glm::lookAt(cameraPos + glm::vec3(0.f, 1.f, 0.f), target, worldUp);
+
+        // Set the camera view matrix
+        polyscope::view::setCameraViewMatrix(viewMatrix);
+
+        polyscope::view::nearClipRatio = 0.01;
+        polyscope::view::farClipRatio = 1000.0;
+
+        // polyscope::draw(false);
+
+        polyscope::screenshot();
+      }
+    }
+  }
+#else
   polyscope::show();
+#endif
 }

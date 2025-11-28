@@ -21,15 +21,6 @@ int main(int argc, char **argv) {
 
   std::optional<mr::Model> model = mr::import(filepath, options);
 
-  // make sure texture are readable
-  for (const auto& mtl : model->materials) {
-    for (const auto& tex : mtl.textures) {
-      for (int i = 0; i < tex.image.pixels.size(); i++) {
-        volatile auto tmp = tex.image.pixels[i];
-      }
-    }
-  }
-
   int triangle_count[8] = {};
   for (const auto& mesh : model->meshes) {
     for (int i = 0; i < mesh.lods.size(); i++) {
@@ -43,9 +34,9 @@ int main(int argc, char **argv) {
   }
 
   if (generate_and_render_meshlets) {
-    render_meshlets(model->meshes, lodnumber);
+    render_meshlets(model.value(), lodnumber);
   }
   else {
-    render(model->meshes, lodnumber);
+    render(model.value(), lodnumber);
   }
 }
