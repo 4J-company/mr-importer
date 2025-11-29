@@ -11,25 +11,27 @@ namespace mr {
 inline namespace importer {
   /** \brief Import options bitmask. */
   enum Options : std::uint32_t {
-    /** \brief Run mesh optimization passes and generate LODs. */
     None = 0u,
-
-    /** \brief Run mesh optimization passes and generate LODs. */
+  
+    /** \brief Run mesh geometry and layout optimization passes. */
     OptimizeMeshes = 1 << 0,
-
+    /** \brief Run discrete LOD generation (using meshoptimizer) */
+    GenerateDiscreteLODs = 1 << 1,
+    /** \brief Generate meshlet division for each discrete LOD (including original mesh) */
+    GenerateMeshlets = 1 << 2,
+  
     /** \brief Prefer BCn over non-compressed formats. */
-    PreferUncompressed = 1 << 1,
-
+    PreferUncompressed = 1 << 3,
+  
     /** \brief Allow 1-component images. */
-    Allow1ComponentImages = 1 << 2,
+    Allow1ComponentImages = 1 << 4,
     /** \brief Allow 2-component images. */
-    Allow2ComponentImages = 1 << 3,
+    Allow2ComponentImages = 1 << 5,
     /** \brief Allow 3-component images. */
-    Allow3ComponentImages = 1 << 4,
+    Allow3ComponentImages = 1 << 6,
     /** \brief Allow 4-component images. */
-    Allow4ComponentImages = 1 << 5,
-
-    /** \brief Enable all available import behaviors. */
+    Allow4ComponentImages = 1 << 7,
+  
     All = ~None,
   };
 } // namespace importer

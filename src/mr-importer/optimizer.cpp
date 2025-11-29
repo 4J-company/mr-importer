@@ -20,7 +20,8 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   constexpr int maxlods = 3;
 
   float lod_scale = 0.1;
-  size_t lod_count = lod_count = std::ceil(std::log(3.f * 47 / indices.size()) / std::log(lod_scale));
+  size_t lod_count = lod_count =
+      std::ceil(std::log(3.f * 47 / indices.size()) / std::log(lod_scale));
 
   // we want any mesh to have at least 47 triangles
   if (lod_count < 1) {
@@ -35,7 +36,7 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   return {lod_count, lod_scale};
 }
 
-static std::pair<IndexSpan, IndexSpan> generate_lod(
+[[nodiscard]] static std::pair<IndexSpan, IndexSpan> generate_lod(
     const PositionArray &positions,
     const IndexSpan &original_indices,
     IndexArray &index_array,
@@ -44,6 +45,8 @@ static std::pair<IndexSpan, IndexSpan> generate_lod(
     int lod_index)
 {
   ZoneScoped;
+  ZoneValue(lod_index);
+  ZoneValue(lod_ratio);
 
   static constexpr float target_error = 0.05f;
 
@@ -132,13 +135,134 @@ static std::pair<IndexSpan, IndexSpan> generate_lod(
 
   return {result_indices_span, result_shadow_indices_span};
 }
-} // namespace
+
+[[nodiscard]] std::pair<MeshletArray, MeshletBoundsArray> generate_meshlets(
+    const PositionArray &positions, IndexSpan indices)
+{
+  ZoneScoped;
+  ZoneValue(positions.size());
+  ZoneValue(indices.size());
+
+  constexpr float cone_weight = 0.25;
+  constexpr float split_factor = 2.0;
+  constexpr size_t max_vertices = 96;
+  constexpr size_t min_triangles = 4;
+  constexpr size_t max_triangles = 96; // up to 126, but divisible by 4
+
+  size_t max_meshlets =
+      meshopt_buildMeshletsBound(indices.size(), max_vertices, min_triangles);
+
+  if (max_meshlets == 0) {
+    return {};
+  }
+
+  MeshletArray meshlet_array;
+  meshlet_array.meshlets.resize(max_meshlets);
+  meshlet_array.meshlet_vertices.resize(indices.size());
+  meshlet_array.meshlet_triangles.resize(indices.size() + max_meshlets * 3);
+
+  // clang-format off
+  static_assert(sizeof(meshopt_Meshlet) == sizeof(Meshlet) &&
+      alignof(meshopt_Meshlet) == alignof(Meshlet) &&
+      offsetof(meshopt_Meshlet, vertex_offset) == offsetof(Meshlet, vertex_offset) &&
+      offsetof(meshopt_Meshlet, vertex_offset) == offsetof(Meshlet, vertex_offset) &&
+      offsetof(meshopt_Meshlet, vertex_offset) == offsetof(Meshlet, vertex_offset) &&
+      offsetof(meshopt_Meshlet, vertex_offset) == offsetof(Meshlet, vertex_offset) &&
+      "Line below relies on the fact that meshopt_Meshlet and mr::Meshlet share the same internal structure.\n"
+      "Change mr::Meshlet data layout (or variable names/types) back or perform an explicit transition");
+
+  size_t meshlet_count = meshopt_buildMeshletsFlex((meshopt_Meshlet *)meshlet_array.meshlets.data(),
+      meshlet_array.meshlet_vertices.data(), meshlet_array.meshlet_triangles.data(),
+      indices.data(), indices.size(),
+      (float *)positions.data(), positions.size(), sizeof(Position),
+      max_vertices, min_triangles, max_triangles, cone_weight, split_factor);
+  // clang-format on
+
+  if (meshlet_count == 0) {
+    return {};
+  }
+
+  meshlet_array.meshlets.resize(meshlet_count);
+
+  size_t meshlet_vertices_count = meshlet_array.meshlets.back().vertex_offset +
+                                  meshlet_array.meshlets.back().vertex_count;
+  size_t meshlet_triangle_count =
+      meshlet_array.meshlets.back().triangle_offset +
+      meshlet_array.meshlets.back().triangle_count;
+
+  meshlet_array.meshlet_vertices.resize(meshlet_vertices_count);
+  meshlet_array.meshlet_triangles.resize(meshlet_triangle_count);
+
+  for (auto &meshlet : meshlet_array.meshlets) {
+    meshopt_optimizeMeshlet(
+        meshlet_array.meshlet_vertices.data() + meshlet.vertex_offset,
+        meshlet_array.meshlet_triangles.data() + meshlet.triangle_offset,
+        meshlet.triangle_count,
+        meshlet.vertex_count);
+  }
+
+  MeshletBoundsArray meshlet_bounds;
+  meshlet_bounds.bounding_spheres.resize(meshlet_array.meshlets.size());
+  meshlet_bounds.packed_cones.resize(meshlet_array.meshlets.size());
+  meshlet_bounds.cones.resize(meshlet_array.meshlets.size());
+
+  tbb::parallel_for<size_t>(0, meshlet_array.meshlets.size(), [&](size_t i) {
+    const auto &m = meshlet_array.meshlets[i];
+    meshopt_Bounds bounds = meshopt_computeMeshletBounds(
+        &meshlet_array.meshlet_vertices[m.vertex_offset],
+        &meshlet_array.meshlet_triangles[m.triangle_offset],
+        m.triangle_count,
+        (float *)positions.data(),
+        positions.size(),
+        sizeof(Position));
+
+    meshlet_bounds.bounding_spheres[i].data = {
+        bounds.center[0], bounds.center[1], bounds.center[2], bounds.radius};
+
+    meshlet_bounds.packed_cones[i].axis[0] = bounds.cone_axis_s8[0];
+    meshlet_bounds.packed_cones[i].axis[1] = bounds.cone_axis_s8[1];
+    meshlet_bounds.packed_cones[i].axis[2] = bounds.cone_axis_s8[2];
+    meshlet_bounds.packed_cones[i].cutoff = bounds.cone_cutoff_s8;
+
+    meshlet_bounds.cones[i].apex = {
+        bounds.cone_apex[0], bounds.cone_apex[1], bounds.cone_apex[2]};
+    meshlet_bounds.cones[i].axis = {
+        bounds.cone_axis[0], bounds.cone_axis[1], bounds.cone_axis[2]};
+    meshlet_bounds.cones[i].cutoff = bounds.cone_cutoff;
+  });
+
+  return {meshlet_array, meshlet_bounds};
+}
+
+void generate_lod_set(Mesh &result,
+    std::span<meshopt_Stream> streams,
+    int lodcount,
+    float lodratio)
+{
+  // LOD generation
+  tbb::parallel_for<int>(
+      1, lodcount + 1, [&result, &streams, &lodratio](int i) {
+        std::tie(result.lods[i].indices, result.lods[i].shadow_indices) =
+            generate_lod(result.positions,
+                result.lods[0].indices,
+                result.indices,
+                streams,
+                lodratio,
+                i);
+      });
+
+  for (int i = result.lods.size() - 1; i > 0; i--) {
+    const auto &indices = result.lods[i];
+    if (indices.indices.size() == 0) {
+      result.lods.erase(result.lods.begin() + i);
+    }
+  }
+}
 
 /**
- * Optimize mesh topology and build multiple LODs suitable for real-time
- * rendering.
+ * Optimize mesh geometry data layout.
  */
-Mesh optimize(Mesh mesh)
+Mesh optimize_data_layout(Mesh mesh)
 {
   ZoneScoped;
   if (mesh.attributes.empty()) {
@@ -155,14 +279,14 @@ Mesh optimize(Mesh mesh)
   result.material = mesh.material;
 
   std::array streams = {
-      meshopt_Stream {mesh.positions.data(),  sizeof(Position),         sizeof(Position)        },
-      meshopt_Stream {mesh.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
+      meshopt_Stream{ mesh.positions.data(),sizeof(Position),sizeof(Position)                  },
+      meshopt_Stream{mesh.attributes.data(),
+                     sizeof(VertexAttributes),
+                     sizeof(VertexAttributes)},
   };
 
   auto [count, ratio] =
       determine_lod_count_and_ratio(mesh.positions, mesh.lods[0].indices);
-  ZoneValue(count);
-  ZoneValue(ratio);
   result.indices.reserve(2 * mesh.indices.size() * (count + 1));
   result.lods.resize(count + 1);
 
@@ -232,8 +356,11 @@ Mesh optimize(Mesh mesh)
       remap.data());
 
   streams = {
-    meshopt_Stream {result.positions.data(),  sizeof(Position),         sizeof(Position)        },
-    meshopt_Stream {result.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
+      meshopt_Stream{
+                     result.positions.data(),sizeof(Position),sizeof(Position)                  },
+      meshopt_Stream{result.attributes.data(),
+                     sizeof(VertexAttributes),
+                     sizeof(VertexAttributes)},
   };
 
   result.lods[0].indices =
@@ -249,39 +376,64 @@ Mesh optimize(Mesh mesh)
       streams.data(),
       streams.size());
 
-  // LOD generation
-  tbb::parallel_for<int>(1, count + 1, [&result, &streams, &ratio](int i) {
-    std::tie(result.lods[i].indices, result.lods[i].shadow_indices) =
-        generate_lod(result.positions,
-            result.lods[0].indices,
-            result.indices,
-            streams,
-            ratio,
-            i);
-  });
-
-  for (int i = result.lods.size() - 1; i > 0; i--) {
-    const auto &indices = result.lods[i];
-    if (indices.indices.size() == 0) {
-      result.lods.erase(result.lods.begin() + i);
-    }
-  }
-
   return result;
 }
 
+} // namespace
+
 void add_optimizer_nodes(FlowGraph &graph, const Options &options)
 {
-  graph.meshes_optimize =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(graph.graph,
-          tbb::flow::unlimited,
-          [&graph, &options](fastgltf::Asset *asset) {
-            if (asset != nullptr && (options & Options::OptimizeMeshes)) {
-              tbb::parallel_for_each(graph.model->meshes,
-                  [](Mesh &mesh) { mesh = mr::optimize(std::move(mesh)); });
-            }
+  graph.meshes_optimize = std::make_unique<
+      tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
+      graph.graph,
+      tbb::flow::unlimited,
+      [&graph, &options](fastgltf::Asset *asset) {
+        if (asset != nullptr && (options & Options::OptimizeMeshes)) {
+          tbb::parallel_for_each(graph.model->meshes, [](Mesh &mesh) {
+            mesh = optimize_data_layout(std::move(mesh));
           });
+        }
+        return asset;
+      });
+
+  graph.mesh_lod_generate = std::make_unique<
+      tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
+      graph.graph,
+      tbb::flow::unlimited,
+      [&graph, &options](fastgltf::Asset *asset) {
+        // clang-format off
+        if (asset != nullptr && (options & Options::GenerateDiscreteLODs)) {
+          tbb::parallel_for_each(graph.model->meshes, [](Mesh &mesh) {
+            std::array streams = {
+              meshopt_Stream {mesh.positions.data(),  sizeof(Position),         sizeof(Position)},
+              meshopt_Stream {mesh.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
+            };
+            auto [count, ratio] = determine_lod_count_and_ratio(mesh.positions, mesh.lods[0].indices);
+            generate_lod_set(mesh, streams, count, ratio);
+          });
+        }
+        // clang-format on
+        return asset;
+      });
+
+  graph.meshlet_generate = std::make_unique<
+      tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
+      graph.graph,
+      tbb::flow::unlimited,
+      [&graph, &options](fastgltf::Asset *asset) {
+        if (asset != nullptr && (options & Options::GenerateMeshlets)) {
+          tbb::parallel_for_each(graph.model->meshes, [](Mesh &mesh) {
+            tbb::parallel_for<size_t>(0, mesh.lods.size(), [&mesh](size_t i) {
+                std::tie(mesh.lods[i].meshlet_array, mesh.lods[i].meshlet_bounds) = generate_meshlets(mesh.positions, mesh.lods[i].indices);
+            });
+          });
+        }
+        return asset;
+      });
+
   tbb::flow::make_edge(*graph.meshes_load, *graph.meshes_optimize);
+  tbb::flow::make_edge(*graph.meshes_optimize, *graph.mesh_lod_generate);
+  tbb::flow::make_edge(*graph.mesh_lod_generate, *graph.meshlet_generate);
 }
 
 } // namespace importer

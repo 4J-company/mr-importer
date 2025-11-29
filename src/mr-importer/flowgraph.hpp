@@ -28,7 +28,9 @@ struct FlowGraph {
   std::unique_ptr<tbb::flow::function_node<fastgltf::Asset *>> materials_load;
   std::unique_ptr<tbb::flow::function_node<fastgltf::Asset *>> lights_load;
 
-  std::unique_ptr<tbb::flow::function_node<fastgltf::Asset *>> meshes_optimize;
+  std::unique_ptr<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>> meshes_optimize;
+  std::unique_ptr<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>> mesh_lod_generate;
+  std::unique_ptr<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>> meshlet_generate;
 };
 
 void add_loader_nodes(FlowGraph &graph, const Options &options);

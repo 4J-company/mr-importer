@@ -30,6 +30,31 @@ inline namespace importer {
     PackedVec3f bitangent;
     mr::Vec2f texcoord;
   };
+  /** \brief Meshlet (mesh cluster) data description. Copied from meshopt_Meshlet */
+  struct Meshlet {
+    uint32_t vertex_offset;
+    uint32_t triangle_offset;
+    uint32_t vertex_count;
+    uint32_t triangle_count;
+  };
+
+  struct BoundingSphere {
+    mr::Vec4f data {};
+    mr::Vec3f center() const noexcept { return {data.x(), data.y(), data.z()}; }
+    float radius() const noexcept { return data.w(); }
+  };
+
+  struct PackedCone {
+    int8_t axis[3];
+    int8_t cutoff;
+  };
+
+  struct Cone {
+    PackedVec3f apex;
+    PackedVec3f axis;
+    float cutoff;
+  };
+
   using AABB = mr::AABBf;
 
   /** \brief Contiguous array of vertex positions. */
@@ -56,12 +81,26 @@ inline namespace importer {
     using std::vector<VertexAttributes>::operator=;
   };
 
+  struct MeshletArray {
+    std::vector<Meshlet> meshlets;
+    IndexArray meshlet_vertices;
+    std::vector<uint8_t> meshlet_triangles;
+  };
+
+  struct MeshletBoundsArray {
+    std::vector<BoundingSphere> bounding_spheres;
+    std::vector<PackedCone> packed_cones;
+    std::vector<Cone> cones;
+  };
+
   /** \brief Renderable mesh with positions, attributes and LODs. */
   struct Mesh {
     /** \brief One level-of-detail of mesh indices. */
     struct LOD {
       IndexSpan indices;
       IndexSpan shadow_indices;
+      MeshletArray meshlet_array;
+      MeshletBoundsArray meshlet_bounds;
     };
 
     PositionArray positions;
