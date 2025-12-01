@@ -66,7 +66,7 @@ TemporaryMesh extractMeshlet(const mr::Mesh& mesh, const mr::Mesh::LOD& lod, siz
     return result;
 }
 
-inline void render_meshlets(const std::vector<mr::Mesh> &meshes) {
+inline void render_meshlets(const std::vector<mr::Mesh> &meshes, int lodnumber) {
   polyscope::init();
 
   // Disable ground
@@ -77,7 +77,6 @@ inline void render_meshlets(const std::vector<mr::Mesh> &meshes) {
   for (int i = 0; i < meshes.size(); i++) {
     auto& mesh = meshes[i];
 
-    int lodnumber = 0;
     auto& lod = mesh.lods.size() - 1 < lodnumber ? mesh.lods.back() : mesh.lods[lodnumber];
     auto& pos = mesh.positions;
 
@@ -107,7 +106,7 @@ inline void render_meshlets(const std::vector<mr::Mesh> &meshes) {
   polyscope::show();
 }
 
-inline void render(const std::vector<mr::Mesh> &meshes) {
+inline void render(const std::vector<mr::Mesh> &meshes, int lodnumber) {
   polyscope::init();
 
   // Disable ground
@@ -119,7 +118,6 @@ inline void render(const std::vector<mr::Mesh> &meshes) {
   for (int i = 0; i < meshes.size(); i++) {
     auto& mesh = meshes[i];
 
-    int lodnumber = 0;
     auto& lod = mesh.lods.size() - 1 < lodnumber ? mesh.lods.back() : mesh.lods[lodnumber];
     auto& pos = mesh.positions;
     auto ind = convertToArrayOfTriples(lod.indices);
