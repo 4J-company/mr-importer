@@ -153,7 +153,10 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
       meshopt_buildMeshletsBound(indices.size(), max_vertices, min_triangles);
 
   if (max_meshlets == 0) {
-    MR_ERROR("Couldn't generate meshlets for a mesh with {} positions and {} indices", positions.size(), indices.size());
+    MR_ERROR("Couldn't generate meshlets for a mesh with {} positions and {} "
+             "indices",
+        positions.size(),
+        indices.size());
     return {};
   }
 
@@ -185,7 +188,10 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   // clang-format on
 
   if (meshlet_count == 0) {
-    MR_ERROR("Couldn't generate meshlets for a mesh with {} positions and {} indices", positions.size(), indices.size());
+    MR_ERROR("Couldn't generate meshlets for a mesh with {} positions and {} "
+             "indices",
+        positions.size(),
+        indices.size());
     return {};
   }
 
@@ -396,59 +402,107 @@ Mesh optimize_data_layout(Mesh mesh)
 
 } // namespace
 
+/*
+ * LOAD -> [SPLIT] --> [OPT₁ -> LOD₁ -> MESHLETS₁] --> JOIN -> NEXT
+ *                  \-> [OPT₂ -> LOD₂ -> MESHLETS₂]---/
+ *                   \-> [OPT₃ -> LOD₃ -> MESHLETS₃]-/
+ *                  ... (Each mesh independently)
+ */
 void add_optimizer_nodes(FlowGraph &graph, const Options &options)
 {
-  graph.meshes_optimize = std::make_unique<
+  graph.split_meshes = std::make_unique<
+      tbb::flow::function_node<fastgltf::Asset *, std::vector<size_t>>>(
+      graph.graph, 1, [&graph](fastgltf::Asset *asset) -> std::vector<size_t> {
+        if (asset == nullptr || !graph.model)
+          return {};
+
+        std::vector<size_t> indices(graph.model->meshes.size());
+        std::iota(indices.begin(), indices.end(), 0);
+        return indices;
+      });
+
+  graph.mesh_index_broadcaster =
+      std::make_unique<tbb::flow::broadcast_node<size_t>>(graph.graph);
+
+  graph.mesh_processor =
+      std::make_unique<tbb::flow::function_node<size_t, size_t>>(graph.graph,
+          tbb::flow::unlimited,
+          [&graph, &options](size_t mesh_idx) -> size_t {
+            if (!graph.model)
+              return mesh_idx;
+
+            Mesh &mesh = graph.model->meshes[mesh_idx];
+
+            if (options & Options::OptimizeMeshes) {
+              mesh = optimize_data_layout(std::move(mesh));
+            }
+
+            // clang-format off
+            if (options & Options::GenerateDiscreteLODs) {
+              std::array streams = {
+                  meshopt_Stream {mesh.positions.data(),  sizeof(Position),         sizeof(Position)        },
+                  meshopt_Stream {mesh.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
+              };
+              auto [count, ratio] = determine_lod_count_and_ratio(mesh.positions, mesh.lods[0].indices);
+              generate_lod_set(mesh, streams, count, ratio);
+            }
+
+            if (options & Options::GenerateMeshlets) {
+              tbb::parallel_for<size_t>(0, mesh.lods.size(), [&mesh](size_t i) {
+                std::tie(mesh.lods[i].meshlet_array, mesh.lods[i].meshlet_bounds) =
+                    generate_meshlets(mesh.positions, mesh.lods[i].indices);
+              });
+            }
+            // clang-format on
+
+            return mesh_idx;
+          });
+
+  // This collects all mesh indices and passes asset pointer forward
+  graph.meshes_join = std::make_unique<
+      tbb::flow::join_node<std::tuple<size_t, fastgltf::Asset *>,
+          tbb::flow::queueing>>(graph.graph);
+
+  graph.continue_after_meshes = std::make_unique<
+      tbb::flow::function_node<std::tuple<size_t, fastgltf::Asset *>,
+          fastgltf::Asset *>>(graph.graph,
+      1,
+      [&graph](const std::tuple<size_t, fastgltf::Asset *> &input)
+          -> fastgltf::Asset * { return std::get<1>(input); });
+
+  // creates separate messages for each mesh to enable independent processing
+  graph.vector_splitter = std::make_unique<
+      tbb::flow::function_node<std::vector<size_t>, tbb::flow::continue_msg>>(
+      graph.graph,
+      1,
+      [&graph](const std::vector<size_t> &indices) -> tbb::flow::continue_msg {
+        for (size_t idx : indices) {
+          graph.mesh_index_broadcaster->try_put(idx);
+        }
+        return {};
+      });
+
+  graph.asset_replicator = std::make_unique<
       tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
       graph.graph,
       tbb::flow::unlimited,
-      [&graph, &options](fastgltf::Asset *asset) {
-        if (asset != nullptr && (options & Options::OptimizeMeshes)) {
-          tbb::parallel_for_each(graph.model->meshes, [](Mesh &mesh) {
-            mesh = optimize_data_layout(std::move(mesh));
-          });
+      [&graph](fastgltf::Asset *asset) -> fastgltf::Asset * {
+        if (graph.model) {
+          for (size_t i = 0; i < graph.model->meshes.size(); ++i) {
+          }
         }
         return asset;
       });
 
-  graph.mesh_lod_generate = std::make_unique<
-      tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
-      graph.graph,
-      tbb::flow::unlimited,
-      [&graph, &options](fastgltf::Asset *asset) {
-        // clang-format off
-        if (asset != nullptr && (options & Options::GenerateDiscreteLODs)) {
-          tbb::parallel_for_each(graph.model->meshes, [](Mesh &mesh) {
-            std::array streams = {
-              meshopt_Stream {mesh.positions.data(),  sizeof(Position),         sizeof(Position)},
-              meshopt_Stream {mesh.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
-            };
-            auto [count, ratio] = determine_lod_count_and_ratio(mesh.positions, mesh.lods[0].indices);
-            generate_lod_set(mesh, streams, count, ratio);
-          });
-        }
-        // clang-format on
-        return asset;
-      });
-
-  graph.meshlet_generate = std::make_unique<
-      tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
-      graph.graph,
-      tbb::flow::unlimited,
-      [&graph, &options](fastgltf::Asset *asset) {
-        if (asset != nullptr && (options & Options::GenerateMeshlets)) {
-          tbb::parallel_for_each(graph.model->meshes, [](Mesh &mesh) {
-            tbb::parallel_for<size_t>(0, mesh.lods.size(), [&mesh](size_t i) {
-                std::tie(mesh.lods[i].meshlet_array, mesh.lods[i].meshlet_bounds) = generate_meshlets(mesh.positions, mesh.lods[i].indices);
-            });
-          });
-        }
-        return asset;
-      });
-
-  tbb::flow::make_edge(*graph.meshes_load, *graph.meshes_optimize);
-  tbb::flow::make_edge(*graph.meshes_optimize, *graph.mesh_lod_generate);
-  tbb::flow::make_edge(*graph.mesh_lod_generate, *graph.meshlet_generate);
+  // clang-format off
+  tbb::flow::make_edge(*graph.meshes_load, *graph.split_meshes);
+  tbb::flow::make_edge(*graph.split_meshes, *graph.vector_splitter);
+  tbb::flow::make_edge(*graph.mesh_index_broadcaster, *graph.mesh_processor);
+  tbb::flow::make_edge(*graph.mesh_processor, tbb::flow::input_port<0>(*graph.meshes_join));
+  tbb::flow::make_edge(*graph.meshes_load, *graph.asset_replicator);
+  tbb::flow::make_edge(*graph.asset_replicator, tbb::flow::input_port<1>(*graph.meshes_join));
+  tbb::flow::make_edge(*graph.meshes_join, *graph.continue_after_meshes);
+  // clang-format on
 }
 
 } // namespace importer
