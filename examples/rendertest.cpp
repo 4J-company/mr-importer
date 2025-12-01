@@ -27,6 +27,18 @@ int main(int argc, char **argv) {
     }
   }
 
+  int triangle_count[8] = {};
+  for (const auto& mesh : model->meshes) {
+    for (int i = 0; i < mesh.lods.size(); i++) {
+      triangle_count[i] += mesh.lods[i].indices.size() / 3;
+    }
+  }
+  int i = 0;
+  while (triangle_count[i] != 0) {
+    printf("LOD[%d] triangle count: %d\n", i, triangle_count[i]);
+    i++;
+  }
+
   if (generate_and_render_meshlets) {
     render_meshlets(model->meshes, lodnumber);
   }
