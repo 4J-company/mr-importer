@@ -146,13 +146,14 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   constexpr float cone_weight = 0.25;
   constexpr float split_factor = 2.0;
   constexpr size_t max_vertices = 96;
-  constexpr size_t min_triangles = 4;
-  constexpr size_t max_triangles = 96; // up to 126, but divisible by 4
+  constexpr size_t min_triangles = 96;
+  constexpr size_t max_triangles = 124; // up to 126, but divisible by 4
 
   size_t max_meshlets =
       meshopt_buildMeshletsBound(indices.size(), max_vertices, min_triangles);
 
   if (max_meshlets == 0) {
+    MR_ERROR("Couldn't generate meshlets for a mesh with {} positions and {} indices", positions.size(), indices.size());
     return {};
   }
 
@@ -171,14 +172,20 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
       "Line below relies on the fact that meshopt_Meshlet and mr::Meshlet share the same internal structure.\n"
       "Change mr::Meshlet data layout (or variable names/types) back or perform an explicit transition");
 
-  size_t meshlet_count = meshopt_buildMeshletsFlex((meshopt_Meshlet *)meshlet_array.meshlets.data(),
-      meshlet_array.meshlet_vertices.data(), meshlet_array.meshlet_triangles.data(),
-      indices.data(), indices.size(),
-      (float *)positions.data(), positions.size(), sizeof(Position),
-      max_vertices, min_triangles, max_triangles, cone_weight, split_factor);
+  size_t meshlet_count = 0;
+  {
+    ZoneScopedN("meshopt_buildMeshletsFlex");
+
+    meshlet_count = meshopt_buildMeshletsFlex((meshopt_Meshlet *)meshlet_array.meshlets.data(),
+        meshlet_array.meshlet_vertices.data(), meshlet_array.meshlet_triangles.data(),
+        indices.data(), indices.size(),
+        (float *)positions.data(), positions.size(), sizeof(Position),
+        max_vertices, min_triangles, max_triangles, cone_weight, split_factor);
+  }
   // clang-format on
 
   if (meshlet_count == 0) {
+    MR_ERROR("Couldn't generate meshlets for a mesh with {} positions and {} indices", positions.size(), indices.size());
     return {};
   }
 
@@ -188,17 +195,21 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
                                   meshlet_array.meshlets.back().vertex_count;
   size_t meshlet_triangle_count =
       meshlet_array.meshlets.back().triangle_offset +
-      meshlet_array.meshlets.back().triangle_count;
+      meshlet_array.meshlets.back().triangle_count * 3;
 
   meshlet_array.meshlet_vertices.resize(meshlet_vertices_count);
   meshlet_array.meshlet_triangles.resize(meshlet_triangle_count);
 
-  for (auto &meshlet : meshlet_array.meshlets) {
-    meshopt_optimizeMeshlet(
-        meshlet_array.meshlet_vertices.data() + meshlet.vertex_offset,
-        meshlet_array.meshlet_triangles.data() + meshlet.triangle_offset,
-        meshlet.triangle_count,
-        meshlet.vertex_count);
+  {
+    ZoneScopedN("meshopt_optimizeMeshlet");
+
+    for (auto &meshlet : meshlet_array.meshlets) {
+      meshopt_optimizeMeshlet(
+          meshlet_array.meshlet_vertices.data() + meshlet.vertex_offset,
+          meshlet_array.meshlet_triangles.data() + meshlet.triangle_offset,
+          meshlet.triangle_count,
+          meshlet.vertex_count);
+    }
   }
 
   MeshletBoundsArray meshlet_bounds;
@@ -206,30 +217,34 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   meshlet_bounds.packed_cones.resize(meshlet_array.meshlets.size());
   meshlet_bounds.cones.resize(meshlet_array.meshlets.size());
 
-  tbb::parallel_for<size_t>(0, meshlet_array.meshlets.size(), [&](size_t i) {
-    const auto &m = meshlet_array.meshlets[i];
-    meshopt_Bounds bounds = meshopt_computeMeshletBounds(
-        &meshlet_array.meshlet_vertices[m.vertex_offset],
-        &meshlet_array.meshlet_triangles[m.triangle_offset],
-        m.triangle_count,
-        (float *)positions.data(),
-        positions.size(),
-        sizeof(Position));
+  {
+    ZoneScopedN("meshopt_computeMeshletBounds");
 
-    meshlet_bounds.bounding_spheres[i].data = {
-        bounds.center[0], bounds.center[1], bounds.center[2], bounds.radius};
+    for (int i = 0; i < meshlet_array.meshlets.size(); i++) {
+      const auto &m = meshlet_array.meshlets[i];
+      meshopt_Bounds bounds = meshopt_computeMeshletBounds(
+          &meshlet_array.meshlet_vertices[m.vertex_offset],
+          &meshlet_array.meshlet_triangles[m.triangle_offset],
+          m.triangle_count,
+          (float *)positions.data(),
+          positions.size(),
+          sizeof(Position));
 
-    meshlet_bounds.packed_cones[i].axis[0] = bounds.cone_axis_s8[0];
-    meshlet_bounds.packed_cones[i].axis[1] = bounds.cone_axis_s8[1];
-    meshlet_bounds.packed_cones[i].axis[2] = bounds.cone_axis_s8[2];
-    meshlet_bounds.packed_cones[i].cutoff = bounds.cone_cutoff_s8;
+      meshlet_bounds.bounding_spheres[i].data = {
+          bounds.center[0], bounds.center[1], bounds.center[2], bounds.radius};
 
-    meshlet_bounds.cones[i].apex = {
-        bounds.cone_apex[0], bounds.cone_apex[1], bounds.cone_apex[2]};
-    meshlet_bounds.cones[i].axis = {
-        bounds.cone_axis[0], bounds.cone_axis[1], bounds.cone_axis[2]};
-    meshlet_bounds.cones[i].cutoff = bounds.cone_cutoff;
-  });
+      meshlet_bounds.packed_cones[i].axis[0] = bounds.cone_axis_s8[0];
+      meshlet_bounds.packed_cones[i].axis[1] = bounds.cone_axis_s8[1];
+      meshlet_bounds.packed_cones[i].axis[2] = bounds.cone_axis_s8[2];
+      meshlet_bounds.packed_cones[i].cutoff = bounds.cone_cutoff_s8;
+
+      meshlet_bounds.cones[i].apex = {
+          bounds.cone_apex[0], bounds.cone_apex[1], bounds.cone_apex[2]};
+      meshlet_bounds.cones[i].axis = {
+          bounds.cone_axis[0], bounds.cone_axis[1], bounds.cone_axis[2]};
+      meshlet_bounds.cones[i].cutoff = bounds.cone_cutoff;
+    }
+  }
 
   return {meshlet_array, meshlet_bounds};
 }

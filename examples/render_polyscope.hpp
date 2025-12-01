@@ -35,8 +35,8 @@ inline std::vector<std::array<T, 3>> convertToArrayOfTriples(const std::span<T> 
 }
 
 struct TemporaryMesh {
-    std::vector<std::array<float, 3>> positions;    // x, y, z for each vertex
-    std::vector<std::array<uint32_t, 3>> indices;   // triangle indices
+    std::vector<std::array<float, 3>> positions;
+    std::vector<std::array<uint32_t, 3>> indices;
 };
 
 TemporaryMesh extractMeshlet(const mr::Mesh& mesh, const mr::Mesh::LOD& lod, size_t meshlet_index) {
@@ -46,34 +46,21 @@ TemporaryMesh extractMeshlet(const mr::Mesh& mesh, const mr::Mesh::LOD& lod, siz
     const auto& meshlet_vertices = lod.meshlet_array.meshlet_vertices;
     const auto& meshlet_triangles = lod.meshlet_array.meshlet_triangles;
     
-    // Extract positions
     result.positions.reserve(meshlet.vertex_count);
     for (uint32_t i = 0; i < meshlet.vertex_count; ++i) {
         uint32_t vertex_index = meshlet_vertices[meshlet.vertex_offset + i];
-        const auto& pos = mesh.positions[vertex_index];
-        result.positions.push_back(pos);
+        result.positions.push_back(mesh.positions[vertex_index]);
     }
     
-    // Extract indices (convert from local to global vertex indices)
     result.indices.reserve(meshlet.triangle_count);
-    for (uint32_t i = 0; i < meshlet.triangle_count * 3; i += 3) {
-        uint32_t tri_offset = meshlet.triangle_offset + i;
+    for (uint32_t i = 0; i < meshlet.triangle_count; i++) {
+        uint32_t triangle_index = meshlet.triangle_offset + i * 3;
 
-        if (tri_offset < meshlet_triangles.size()) {
-          break;
-        }
+        uint8_t v0 = meshlet_triangles[triangle_index + 0];
+        uint8_t v1 = meshlet_triangles[triangle_index + 1];
+        uint8_t v2 = meshlet_triangles[triangle_index + 2];
 
-        uint8_t v0 = meshlet_triangles[tri_offset + 0];
-        uint8_t v1 = meshlet_triangles[tri_offset + 1];
-        uint8_t v2 = meshlet_triangles[tri_offset + 2];
-        
-        // Convert local meshlet indices to global vertex indices
-        uint32_t global_v0 = meshlet_vertices[meshlet.vertex_offset + v0];
-        uint32_t global_v1 = meshlet_vertices[meshlet.vertex_offset + v1];
-        uint32_t global_v2 = meshlet_vertices[meshlet.vertex_offset + v2];
-        
-        std::array tmp = {global_v0, global_v1, global_v2};
-        result.indices.push_back(tmp);
+        result.indices.push_back({v0, v1, v2});
     }
     
     return result;
@@ -109,8 +96,7 @@ inline void render_meshlets(const std::vector<mr::Mesh> &meshes) {
         auto fmt = std::format("Mesh {}{}; Instance {}; Meshlet {}", mesh.name, i, k, j);
 
         auto x = extractMeshlet(mesh, lod, j);
-
-        auto* meshptr = polyscope::registerSurfaceMesh(remove_hashtags(fmt), mesh.positions, x.indices);
+        auto* meshptr = polyscope::registerSurfaceMesh(remove_hashtags(fmt), x.positions, x.indices);
         meshptr->setTransform(t);
         // meshptr->setMaterial("normal");
         meshptr->setEdgeWidth(1.0);  // Enable edge rendering by default
