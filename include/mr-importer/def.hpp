@@ -23,10 +23,10 @@ inline namespace importer {
 }
 } // namespace mr
 #else
-#include <beman/inplace_vector/inplace_vector.hpp>
+#include <boost/container/static_vector.hpp>
 namespace mr {
 inline namespace importer {
-  template <typename T, size_t N> using InplaceVector = beman::inplace_vector<T, N>;
+  template <typename T, size_t N> using InplaceVector = boost::container::static_vector<T, N>;
 }
 } // namespace mr
 #endif
