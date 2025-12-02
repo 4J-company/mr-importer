@@ -19,6 +19,10 @@ std::optional<Model> import(const std::filesystem::path &path, Options options)
 {
   ZoneScoped;
 
+  if (path.extension() == ".mrmodel") {
+    return deserialize(path.string());
+  }
+
   FlowGraph graph;
   graph.path = std::move(path);
 

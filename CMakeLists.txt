@@ -24,12 +24,14 @@ add_library(${MR_IMPORTER_LIB_NAME}
     include/mr-importer/loader.hpp
     include/mr-importer/optimizer.hpp
     include/mr-importer/compiler.hpp
+    include/mr-importer/serializer.hpp
 
     src/mr-importer/assets.cpp
     src/mr-importer/importer.cpp
     src/mr-importer/loader.cpp
     src/mr-importer/optimizer.cpp
     src/mr-importer/compiler.cpp
+    src/mr-importer/serializer.cpp
     src/mr-importer/flowgraph.hpp
     src/mr-importer/pch.hpp
 )

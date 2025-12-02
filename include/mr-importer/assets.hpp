@@ -280,6 +280,12 @@ inline namespace importer {
     // RGB == Color; A == Intensity
     Color packed_color_and_intensity;
 
+    LightBase() = default;
+    LightBase(const LightBase &) = default;
+    LightBase& operator=(const LightBase &) = default;
+    LightBase(LightBase &&) noexcept = default;
+    LightBase& operator=(LightBase &&) noexcept = default;
+
     LightBase(float r, float g, float b, float intensity)
       : packed_color_and_intensity(r, g, b, intensity)
     {}

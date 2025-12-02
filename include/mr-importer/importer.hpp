@@ -10,6 +10,7 @@
 #include "compiler.hpp"
 #include "loader.hpp"
 #include "optimizer.hpp"
+#include "serializer.hpp"
 #include "options.hpp"
 
 namespace mr {
