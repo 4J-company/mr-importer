@@ -31,12 +31,19 @@ Model::Model(const std::filesystem::path &path)
 Shader::Shader(const std::filesystem::path &path)
 {
   auto compiled = compile(path);
-  if (!compiled) {
+  if (!compiled || compiled->size() == 0) {
     MR_ERROR("Shader compilation failed: {}", path.string());
     return;
   }
 
-  *this = std::move(compiled.value());
+  if (compiled->size() > 1) {
+    MR_ERROR("Shader compilation yielded multiple binaries.\n"
+             "This usually happens when shader contains multiple entry points.\n"
+             "If this is expected behaviour call `mr::compile` explicitly");
+    return;
+  }
+
+  *this = std::move(compiled.value().front());
 }
 } // namespace importer
 } // namespace mr

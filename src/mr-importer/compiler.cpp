@@ -81,20 +81,68 @@ compile_module(slang::ISession *session, const std::filesystem::path &path)
   return module;
 }
 
+mr::Shader::Stage slang2importer(SlangStage stage) {
+  switch (stage) {
+    case SLANG_STAGE_VERTEX: return mr::Shader::Stage::Vertex; break;
+    case SLANG_STAGE_HULL: return mr::Shader::Stage::Hull; break;
+    case SLANG_STAGE_DOMAIN: return mr::Shader::Stage::Domain; break;
+    case SLANG_STAGE_GEOMETRY: return mr::Shader::Stage::Geometry; break;
+    case SLANG_STAGE_FRAGMENT: return mr::Shader::Stage::Fragment; break;
+    case SLANG_STAGE_COMPUTE: return mr::Shader::Stage::Compute; break;
+    case SLANG_STAGE_RAY_GENERATION: return mr::Shader::Stage::RayGeneration; break;
+    case SLANG_STAGE_INTERSECTION: return mr::Shader::Stage::Intersection; break;
+    case SLANG_STAGE_ANY_HIT: return mr::Shader::Stage::AnyHit; break;
+    case SLANG_STAGE_CLOSEST_HIT: return mr::Shader::Stage::ClosestHit; break;
+    case SLANG_STAGE_MISS: return mr::Shader::Stage::Miss; break;
+    case SLANG_STAGE_CALLABLE: return mr::Shader::Stage::Callable; break;
+    case SLANG_STAGE_MESH: return mr::Shader::Stage::Mesh; break;
+    case SLANG_STAGE_AMPLIFICATION: return mr::Shader::Stage::Amplification; break;
+    case SLANG_STAGE_DISPATCH: return mr::Shader::Stage::Dispatch; break;
+  }
+  PANIC("Unhandled SlangStage");
+  return {};
+}
+
 /**
  * Find the entry point named "main" in the given module.
  *
  * Returns the entry point if it exists, otherwise std::nullopt.
  */
-static std::optional<Slang::ComPtr<slang::IEntryPoint>> locate_entry_point(
-    slang::IModule *module)
+static std::optional<std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, mr::Shader::Stage>>>
+locate_entry_point(slang::IModule *module)
 {
+  std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, mr::Shader::Stage>> res_vec;
+
   Slang::ComPtr<slang::IEntryPoint> res;
-  module->findEntryPointByName("main", res.writeRef());
-  if (res) {
-    return res;
+  Slang::ComPtr<slang::IBlob> blob;
+  for (auto [stage, name] : std::vector<std::pair<SlangStage, std::string_view>>{
+           {        SLANG_STAGE_VERTEX,        "vertex_main"},
+           {          SLANG_STAGE_HULL,          "hull_main"},
+           {        SLANG_STAGE_DOMAIN,        "domain_main"},
+           {      SLANG_STAGE_GEOMETRY,      "geometry_main"},
+           {      SLANG_STAGE_FRAGMENT,      "fragment_main"},
+           {       SLANG_STAGE_COMPUTE,       "compute_main"},
+           {SLANG_STAGE_RAY_GENERATION,    "generation_main"},
+           {  SLANG_STAGE_INTERSECTION,  "intersection_main"},
+           {       SLANG_STAGE_ANY_HIT,       "any_hit_main"},
+           {   SLANG_STAGE_CLOSEST_HIT,   "closest_hit_main"},
+           {          SLANG_STAGE_MISS,          "miss_main"},
+           {      SLANG_STAGE_CALLABLE,      "callable_main"},
+           {          SLANG_STAGE_MESH,          "mesh_main"},
+           { SLANG_STAGE_AMPLIFICATION, "amplification_main"},
+           {      SLANG_STAGE_DISPATCH,      "dispatch_main"}
+  }) {
+    module->findAndCheckEntryPoint(name.data(), stage, res.writeRef(), blob.writeRef());
+    if (res) {
+      res_vec.emplace_back(std::move(res), slang2importer(stage));
+    }
   }
-  return std::nullopt;
+
+  if (res_vec.empty()) {
+    return std::nullopt;
+  }
+
+  return res_vec;
 }
 
 /**
@@ -176,7 +224,7 @@ get_target_code(slang::IComponentType *linked)
  * On any error during compilation, composition or linking, logs diagnostics
  * and returns std::nullopt.
  */
-std::optional<Shader> compile(const std::filesystem::path &path)
+std::optional<std::vector<Shader>> compile(const std::filesystem::path &path)
 {
   Slang::ComPtr<slang::ISession> session = get_or_create_session();
 
@@ -191,52 +239,57 @@ std::optional<Shader> compile(const std::filesystem::path &path)
     return std::nullopt;
   }
 
-  Slang::ComPtr<slang::IEntryPoint> entry_point;
+  std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, mr::Shader::Stage>> entry_points;
   if (auto res = locate_entry_point(module.get()); res.has_value()) {
-    entry_point = std::move(res.value());
+    entry_points = std::move(res.value());
   }
   else {
     MR_ERROR(" Failed to locate entry point for shader {}", path.string());
     return std::nullopt;
   }
 
-  Slang::ComPtr<slang::IComponentType> composed;
-  if (auto res =
-          compose_components(session.get(), module.get(), entry_point.get());
-      res.has_value()) {
-    composed = std::move(res.value());
-  }
-  else {
-    MR_ERROR(" Failed to compose a program {}", path.string());
-    MR_ERROR("\t\t{}", (char *)res.error()->getBufferPointer());
-    return std::nullopt;
-  }
-
-  Slang::ComPtr<slang::IComponentType> linked;
-  if (auto res = link_program(composed); res.has_value()) {
-    linked = std::move(res.value());
-  }
-  else {
-    MR_ERROR(" Failed to link a program {}", path.string());
-    MR_ERROR("\t\t{}", (char *)res.error()->getBufferPointer());
-    return std::nullopt;
+  std::vector<std::pair<Slang::ComPtr<slang::IComponentType>, mr::Shader::Stage>> composeds;
+  for (const auto &entry_point : entry_points) {
+    if (auto res =
+            compose_components(session.get(), module.get(), entry_point.first.get());
+        res.has_value()) {
+      composeds.emplace_back(std::move(res.value()), entry_point.second);
+    }
+    else {
+      MR_ERROR(" Failed to compose a program {}", path.string());
+      MR_ERROR("\t\t{}", (char *)res.error()->getBufferPointer());
+    }
   }
 
-  Shader shader;
-  if (auto res = get_target_code(linked); res.has_value()) {
-    auto comptr = std::move(res.value());
-    auto ptr = comptr.detach();
-
-    shader.spirv.reset((std::byte *)ptr->getBufferPointer());
-    shader.spirv.size(ptr->getBufferSize());
-  }
-  else {
-    MR_ERROR(" Failed to get target code from a program {}", path.string());
-    MR_ERROR("\t\t{}", (char *)res.error()->getBufferPointer());
-    return std::nullopt;
+  std::vector<std::pair<Slang::ComPtr<slang::IComponentType>, mr::Shader::Stage>> linkeds;
+  for (const auto &composed : composeds) {
+    if (auto res = link_program(composed.first); res.has_value()) {
+      linkeds.emplace_back(std::move(res.value()), composed.second);
+    }
+    else {
+      MR_ERROR(" Failed to link a program {}", path.string());
+      MR_ERROR("\t\t{}", (char *)res.error()->getBufferPointer());
+    }
   }
 
-  return shader;
+  std::vector<Shader> shaders;
+  for (const auto &linked : linkeds) {
+    if (auto res = get_target_code(linked.first); res.has_value()) {
+      auto comptr = std::move(res.value());
+      auto ptr = comptr.detach();
+
+      auto &last = shaders.emplace_back();
+      last.stage = linked.second;
+      last.spirv.reset((std::byte *)ptr->getBufferPointer());
+      last.spirv.size(ptr->getBufferSize());
+    }
+    else {
+      MR_ERROR(" Failed to get target code from a program {}", path.string());
+      MR_ERROR("\t\t{}", (char *)res.error()->getBufferPointer());
+    }
+  }
+
+  return shaders;
 }
 } // namespace importer
 } // namespace mr

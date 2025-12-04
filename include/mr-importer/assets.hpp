@@ -269,7 +269,26 @@ inline namespace importer {
    * Holds backend-specific code (SPIR-V) produced by \ref compile.
    */
   struct Shader {
+    enum struct Stage : uint32_t {
+      Vertex,
+      Hull,
+      Domain,
+      Geometry,
+      Fragment,
+      Compute,
+      RayGeneration,
+      Intersection,
+      AnyHit,
+      ClosestHit,
+      Miss,
+      Callable,
+      Mesh,
+      Amplification,
+      Dispatch,
+    };
+
     SizedUniqueArray<const std::byte> spirv;
+    Stage stage;
 
     Shader() = default;
     /** \brief Construct and compile the shader at the given path. */

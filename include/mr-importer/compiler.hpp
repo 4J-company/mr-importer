@@ -15,6 +15,6 @@ inline namespace importer {
    * \param path Filesystem path to the shader module (e.g. Slang file).
    * \return Compiled \ref Shader on success, or std::nullopt on failure.
    */
-  std::optional<Shader> compile(const std::filesystem::path& path);
+  std::optional<std::vector<Shader>> compile(const std::filesystem::path& path);
 }
 } // namespace mr
