@@ -79,6 +79,22 @@ inline namespace importer {
   struct VertexAttributesArray : std::vector<VertexAttributes> {
     using std::vector<VertexAttributes>::vector;
     using std::vector<VertexAttributes>::operator=;
+
+    uint8_t is_color_present     : 1;
+    uint8_t is_normal_present    : 1;
+    uint8_t is_tangent_present   : 1;
+    uint8_t is_bitangent_present : 1;
+    uint8_t is_texcoord_present  : 1;
+
+    constexpr std::array<float, 5> weights() const noexcept {
+      return {
+        is_color_present     ? 0.5f : 0.f,
+        is_normal_present    ? 0.5f : 0.f,
+        is_tangent_present   ? 0.5f : 0.f,
+        is_bitangent_present ? 0.5f : 0.f,
+        is_texcoord_present  ? 0.5f : 0.f,
+      };
+    }
   };
 
   struct MeshletArray {

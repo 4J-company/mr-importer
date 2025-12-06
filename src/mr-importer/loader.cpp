@@ -562,9 +562,14 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
           mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
         },
         [&]() {
+          if (is_disabled(options, Options::LoadMeshAttributes)) {
+            return;
+          }
+
           std::optional<AccessorDescription> normals =
               get_accessor_by_name(options, asset, primitive, "NORMAL");
           if (normals.has_value()) {
+            mesh.attributes.is_normal_present = true;
             int count = normals.value().accessor.count;
             {
               std::lock_guard lock(attributes_resize_mutex);
@@ -581,9 +586,14 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
           }
         },
         [&]() {
+          if (is_disabled(options, Options::LoadMeshAttributes)) {
+            return;
+          }
+
           std::optional<AccessorDescription> texcoords =
               get_accessor_by_name(options, asset, primitive, "TEXCOORD_0");
           if (texcoords.has_value()) {
+            mesh.attributes.is_texcoord_present = true;
             ASSERT(texcoords.value().accessor.type ==
                    fastgltf::AccessorType::Vec2);
             {

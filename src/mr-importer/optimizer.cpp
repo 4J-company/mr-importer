@@ -17,11 +17,12 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
 {
   ZoneScoped;
 
-  constexpr int maxlods = 3;
+  constexpr int maxlods = 5;
 
-  float lod_scale = 0.1;
-  size_t lod_count = lod_count =
-      std::ceil(std::log(3.f * 47 / indices.size()) / std::log(lod_scale));
+  size_t triangle_count = indices.size() / 3;
+  float lod_scale = std::pow(47.f / triangle_count, 1.f / maxlods);
+  size_t lod_count =
+      std::ceil(std::log(47.f / triangle_count) / std::log(lod_scale));
 
   // we want any mesh to have at least 47 triangles
   if (lod_count < 1) {
@@ -38,6 +39,7 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
 
 [[nodiscard]] static std::pair<IndexSpan, IndexSpan> generate_lod(
     const PositionArray &positions,
+    const VertexAttributesArray &attributes,
     const IndexSpan &original_indices,
     IndexArray &index_array,
     const std::span<meshopt_Stream> &streams,
@@ -65,19 +67,41 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   uint32_t options =
       meshopt_SimplifyPrune | (is_sparse ? meshopt_SimplifySparse : 0);
 
+  auto attribute_weights = attributes.weights();
+
   {
     ZoneScopedN("meshopt_simplify");
 
-    result_indices.resize(meshopt_simplify(result_indices.data(),
-        original_indices.data(),
-        original_indices.size(),
-        (float *)positions.data(),
-        positions.size(),
-        sizeof(Position),
-        target_index_count,
-        target_error,
-        options,
-        &lod_error));
+    if (!attributes.empty()) {
+      result_indices.resize(
+          meshopt_simplifyWithAttributes(result_indices.data(),
+              original_indices.data(),
+              original_indices.size(),
+              (float *)positions.data(),
+              positions.size(),
+              sizeof(Position),
+              (float *)attributes.data(),
+              sizeof(VertexAttributes),
+              attribute_weights.data(),
+              attribute_weights.size(),
+              nullptr,
+              target_index_count,
+              target_error,
+              options,
+              &lod_error));
+    }
+    else {
+      result_indices.resize(meshopt_simplify(result_indices.data(),
+          original_indices.data(),
+          original_indices.size(),
+          (float *)positions.data(),
+          positions.size(),
+          sizeof(Position),
+          target_index_count,
+          target_error,
+          options,
+          &lod_error));
+    }
   }
 
   {
@@ -93,12 +117,23 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
     ZoneScopedN("meshopt_generateShadowIndexBufferMulti");
 
     result_shadow_indices.resize(result_indices.size());
-    meshopt_generateShadowIndexBufferMulti(result_shadow_indices.data(),
-        result_indices.data(),
-        result_indices.size(),
-        positions.size(),
-        streams.data(),
-        streams.size());
+    if (!attributes.empty()) {
+      meshopt_generateShadowIndexBufferMulti(result_shadow_indices.data(),
+          result_indices.data(),
+          result_indices.size(),
+          positions.size(),
+          streams.data(),
+          streams.size());
+    }
+    else {
+      meshopt_generateShadowIndexBuffer(result_shadow_indices.data(),
+          result_indices.data(),
+          result_indices.size(),
+          positions.data(),
+          positions.size(),
+          sizeof(Position),
+          sizeof(Position));
+    }
   }
 
   {
@@ -265,6 +300,7 @@ void generate_lod_set(Mesh &result,
       1, lodcount + 1, [&result, &streams, &lodratio](int i) {
         std::tie(result.lods[i].indices, result.lods[i].shadow_indices) =
             generate_lod(result.positions,
+                result.attributes,
                 result.lods[0].indices,
                 result.indices,
                 streams,
@@ -286,12 +322,6 @@ void generate_lod_set(Mesh &result,
 Mesh optimize_data_layout(Mesh mesh)
 {
   ZoneScoped;
-  if (mesh.attributes.empty()) {
-    MR_WARNING("Mesh has no attributes, but they are considered by `optimize` "
-               "function."
-               " Consider adding attribute-less path in optimize");
-    mesh.attributes.resize(mesh.positions.size());
-  }
 
   Mesh result;
   result.transforms = std::move(mesh.transforms);
@@ -327,18 +357,32 @@ Mesh optimize_data_layout(Mesh mesh)
       sizeof(Position),
       1.05f);
 
+  size_t vertex_count = 0;
   IndexArray remap;
   remap.resize(mesh.indices.size());
-  size_t vertex_count = meshopt_generateVertexRemapMulti(remap.data(),
-      mesh.indices.data(),
-      mesh.indices.size(),
-      mesh.positions.size(),
-      streams.data(),
-      streams.size());
+  if (!mesh.attributes.empty()) {
+    vertex_count = meshopt_generateVertexRemapMulti(remap.data(),
+        mesh.indices.data(),
+        mesh.indices.size(),
+        mesh.positions.size(),
+        streams.data(),
+        streams.size());
+  }
+  else {
+    vertex_count = meshopt_generateVertexRemap(remap.data(),
+        mesh.indices.data(),
+        mesh.indices.size(),
+        mesh.positions.data(),
+        mesh.positions.size(),
+        sizeof(Position));
+  }
 
   result.indices.resize(mesh.indices.size());
   result.positions.resize(vertex_count);
-  result.attributes.resize(vertex_count);
+
+  if (!mesh.attributes.empty()) {
+    result.attributes.resize(vertex_count);
+  }
 
   meshopt_remapIndexBuffer(result.indices.data(),
       mesh.indices.data(),
@@ -349,11 +393,14 @@ Mesh optimize_data_layout(Mesh mesh)
       mesh.positions.size(),
       sizeof(Position),
       remap.data());
-  meshopt_remapVertexBuffer(result.attributes.data(),
-      mesh.attributes.data(),
-      mesh.positions.size(),
-      sizeof(VertexAttributes),
-      remap.data());
+
+  if (!mesh.attributes.empty()) {
+    meshopt_remapVertexBuffer(result.attributes.data(),
+        mesh.attributes.data(),
+        mesh.positions.size(),
+        sizeof(VertexAttributes),
+        remap.data());
+  }
 
   meshopt_optimizeVertexFetchRemap(remap.data(),
       result.indices.data(),
@@ -370,11 +417,14 @@ Mesh optimize_data_layout(Mesh mesh)
       result.positions.size(),
       sizeof(Position),
       remap.data());
-  meshopt_remapVertexBuffer(result.attributes.data(),
-      result.attributes.data(),
-      result.attributes.size(),
-      sizeof(VertexAttributes),
-      remap.data());
+
+  if (!mesh.attributes.empty()) {
+    meshopt_remapVertexBuffer(result.attributes.data(),
+        result.attributes.data(),
+        result.attributes.size(),
+        sizeof(VertexAttributes),
+        remap.data());
+  }
 
   streams = {
       meshopt_Stream{
@@ -390,12 +440,24 @@ Mesh optimize_data_layout(Mesh mesh)
       IndexSpan(result.indices.data() + result.lods[0].indices.size(),
           result.lods[0].indices.size());
   result.indices.resize(result.indices.size() + result.indices.size());
-  meshopt_generateShadowIndexBufferMulti(result.lods[0].shadow_indices.data(),
-      result.lods[0].indices.data(),
-      result.lods[0].indices.size(),
-      result.positions.size(),
-      streams.data(),
-      streams.size());
+
+  if (!mesh.attributes.empty()) {
+    meshopt_generateShadowIndexBufferMulti(result.lods[0].shadow_indices.data(),
+        result.lods[0].indices.data(),
+        result.lods[0].indices.size(),
+        result.positions.size(),
+        streams.data(),
+        streams.size());
+  }
+  else {
+    meshopt_generateShadowIndexBuffer(result.lods[0].shadow_indices.data(),
+        result.lods[0].indices.data(),
+        result.lods[0].indices.size(),
+        result.positions.data(),
+        result.positions.size(),
+        sizeof(Position),
+        sizeof(Position));
+  }
 
   return result;
 }
