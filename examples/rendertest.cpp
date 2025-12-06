@@ -14,7 +14,10 @@ int main(int argc, char **argv) {
   int lodnumber = argc < 3 ? 0 : std::atoi(argv[2]);
   bool generate_and_render_meshlets = argc < 4 ? true : std::atoi(argv[3]);
 
-  mr::Options options = mr::Options(mr::Options::All & (generate_and_render_meshlets ? mr::Options::All : ~mr::Options::GenerateMeshlets));
+  mr::Options options = mr::Options::All;
+  if (!generate_and_render_meshlets) {
+    mr::disable(options, mr::Options::GenerateMeshlets);
+  }
 
   std::optional<mr::Model> model = mr::import(filepath, options);
 

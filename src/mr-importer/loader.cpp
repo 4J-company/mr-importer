@@ -34,8 +34,7 @@ namespace {
  * On IO or parse error, logs an error with the fastgltf code and returns
  * std::nullopt. Uses LoadExternalBuffers/Images to resolve external data.
  */
-static std::optional<fastgltf::Asset> get_asset_from_path(
-    const std::filesystem::path &path)
+static std::optional<fastgltf::Asset> get_asset_from_path(const std::filesystem::path &path)
 {
   using namespace fastgltf;
 
@@ -49,6 +48,7 @@ static std::optional<fastgltf::Asset> get_asset_from_path(
     return std::nullopt; // Failed to load GLTF data
   }
 
+  // clang-format off
   auto extensions =
       fastgltf::Extensions::KHR_lights_punctual |
       fastgltf::Extensions::KHR_materials_pbrSpecularGlossiness |
@@ -58,9 +58,11 @@ static std::optional<fastgltf::Asset> get_asset_from_path(
       fastgltf::Extensions::MSFT_texture_dds |
       fastgltf::Extensions::KHR_texture_basisu |
       fastgltf::Extensions::MSFT_packing_occlusionRoughnessMetallic;
+  // clang-format on
+
   Parser parser(extensions);
-  auto options = fastgltf::Options::LoadExternalBuffers |
-                 fastgltf::Options::DontRequireValidAssetMember;
+  auto options =
+      fastgltf::Options::LoadExternalBuffers | fastgltf::Options::DontRequireValidAssetMember;
 
   auto dir = path.parent_path();
 
@@ -93,10 +95,8 @@ static const fastgltf::Accessor &get_accessor_from_attribute(
 }
 
 struct AccessorDescription {
-  enum struct Type { Draco, Plane };
-
+  enum struct Type { Draco, Plane } type;
   const fastgltf::Accessor &accessor;
-  Type type;
 };
 
 /**
@@ -117,8 +117,7 @@ static std::optional<AccessorDescription> get_accessor_by_name(Options options,
   const fastgltf::Attribute *attr = nullptr;
   AccessorDescription::Type type = AccessorDescription::Type::Plane;
 
-  if (const auto *tmp = primitive.findAttribute(name);
-      tmp != primitive.attributes.cend()) {
+  if (const auto *tmp = primitive.findAttribute(name); tmp != primitive.attributes.cend()) {
     attr = tmp;
   }
 
@@ -126,7 +125,6 @@ static std::optional<AccessorDescription> get_accessor_by_name(Options options,
       (attr == nullptr || !(options & Options::PreferUncompressed))) {
     if (const auto *tmp = primitive.dracoCompression->findAttribute(name);
         tmp != primitive.dracoCompression->attributes.cend()) {
-      MR_INFO("Decided to load DRACO {}", name);
       attr = tmp;
       type = AccessorDescription::Type::Draco;
     }
@@ -136,7 +134,7 @@ static std::optional<AccessorDescription> get_accessor_by_name(Options options,
     return std::nullopt;
   }
 
-  return AccessorDescription(get_accessor_from_attribute(asset, *attr), type);
+  return AccessorDescription(type, get_accessor_from_attribute(asset, *attr));
 }
 
 static void decode_draco_index_buffer(
@@ -144,53 +142,48 @@ static void decode_draco_index_buffer(
 {
   if (component_size == 4) {
     ASSERT(sizeof(mesh->face(draco::FaceIndex(0))[0]) == component_size);
-    memcpy(out_buffer.data(),
-        &mesh->face(draco::FaceIndex(0))[0],
-        out_buffer.size());
+    memcpy(out_buffer.data(), &mesh->face(draco::FaceIndex(0))[0], out_buffer.size());
   }
   else {
     size_t face_stride = component_size * 3;
     for (draco::FaceIndex f(0); f < mesh->num_faces(); ++f) {
       const draco::Mesh::Face &face = mesh->face(f);
+      // clang-format off
       if (component_size == 2) {
-        uint16_t indices[3] = {static_cast<uint16_t>(face[0].value()),
-            static_cast<uint16_t>(face[1].value()),
-            static_cast<uint16_t>(face[2].value())};
-        memcpy(out_buffer.data() + f.value() * face_stride,
-            &indices[0],
-            face_stride);
+        uint16_t indices[3] = {
+          static_cast<uint16_t>(face[0].value()),
+          static_cast<uint16_t>(face[1].value()),
+          static_cast<uint16_t>(face[2].value())
+        };
+        memcpy(out_buffer.data() + f.value() * face_stride, &indices[0], face_stride);
       }
       else {
-        uint8_t indices[3] = {static_cast<uint8_t>(face[0].value()),
-            static_cast<uint8_t>(face[1].value()),
-            static_cast<uint8_t>(face[2].value())};
-        memcpy(out_buffer.data() + f.value() * face_stride,
-            &indices[0],
-            face_stride);
+        uint8_t indices[3] = {
+          static_cast<uint8_t>(face[0].value()),
+          static_cast<uint8_t>(face[1].value()),
+          static_cast<uint8_t>(face[2].value())
+        };
+        memcpy(out_buffer.data() + f.value() * face_stride, &indices[0], face_stride);
       }
+      // clang-format on
     }
   }
 }
 
 template <typename T>
-static bool get_attribute_for_all_points(draco::Mesh *mesh,
-    const draco::PointAttribute *p_attribute,
-    std::vector<uint8_t> &out_buffer)
+static bool get_attribute_for_all_points(
+    draco::Mesh *mesh, const draco::PointAttribute *p_attribute, std::vector<uint8_t> &out_buffer)
 {
   size_t byte_offset = 0;
   uint8_t values[64] = {};
   for (draco::PointIndex i(0); i < mesh->num_points(); ++i) {
     const draco::AttributeValueIndex val_index = p_attribute->mapped_index(i);
-    if (!p_attribute->ConvertValue<T>(
-            val_index, p_attribute->num_components(), (T *)values)) {
+    if (!p_attribute->ConvertValue<T>(val_index, p_attribute->num_components(), (T *)values)) {
       return false;
     }
 
-    ASSERT(byte_offset + sizeof(T) * p_attribute->num_components() <=
-           out_buffer.size());
-    memcpy(out_buffer.data() + byte_offset,
-        &values[0],
-        sizeof(T) * p_attribute->num_components());
+    ASSERT(byte_offset + sizeof(T) * p_attribute->num_components() <= out_buffer.size());
+    memcpy(out_buffer.data() + byte_offset, &values[0], sizeof(T) * p_attribute->num_components());
     byte_offset += sizeof(T) * p_attribute->num_components();
   }
   return true;
@@ -248,44 +241,34 @@ static bool get_attribute_for_all_points(fastgltf::ComponentType component_type,
 
   switch (p_attribute->data_type()) {
   case draco::DataType::DT_UINT8:
-    decode_result =
-        get_attribute_for_all_points<uint8_t>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<uint8_t>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_INT8:
-    decode_result =
-        get_attribute_for_all_points<int8_t>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<int8_t>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_UINT16:
-    decode_result =
-        get_attribute_for_all_points<uint16_t>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<uint16_t>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_INT16:
-    decode_result =
-        get_attribute_for_all_points<int16_t>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<int16_t>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_INT32:
-    decode_result =
-        get_attribute_for_all_points<int32_t>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<int32_t>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_UINT32:
-    decode_result =
-        get_attribute_for_all_points<uint32_t>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<uint32_t>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_INT64:
-    decode_result =
-        get_attribute_for_all_points<int64_t>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<int64_t>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_UINT64:
-    decode_result =
-        get_attribute_for_all_points<uint64_t>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<uint64_t>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_FLOAT32:
-    decode_result =
-        get_attribute_for_all_points<float>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<float>(mesh, p_attribute, out_buffer);
     break;
   case draco::DataType::DT_FLOAT64:
-    decode_result =
-        get_attribute_for_all_points<double>(mesh, p_attribute, out_buffer);
+    decode_result = get_attribute_for_all_points<double>(mesh, p_attribute, out_buffer);
     break;
   default:
     decode_result = false;
@@ -339,7 +322,8 @@ static size_t byte_size(draco::DataType component_type)
 }
 
 // Main Draco decoding function
-static bool decode_draco_primitive(const fastgltf::Asset &asset,
+static bool decode_draco_primitive(mr::Options options,
+    const fastgltf::Asset &asset,
     const fastgltf::Primitive &primitive,
     PositionArray &out_positions,
     VertexAttributesArray &out_attributes,
@@ -357,17 +341,15 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
   std::span<const char> draco_data;
   std::visit(
       fastgltf::visitor{[&](const fastgltf::sources::Array &array) {
-                          draco_data = {(const char *)array.bytes.data() +
-                                            buffer_view.byteOffset,
+                          draco_data = {(const char *)array.bytes.data() + buffer_view.byteOffset,
                               buffer_view.byteLength};
                         },
           [&](const fastgltf::sources::Vector &vector) {
             draco_data = {
-                (const char *)vector.bytes.data() + buffer_view.byteOffset,
-                buffer_view.byteLength};
+                (const char *)vector.bytes.data() + buffer_view.byteOffset, buffer_view.byteLength};
           },
-          [](auto &) {
-            MR_ERROR("Unsupported buffer source for Draco compression");
+          [](auto &arg) {
+            DEBUG_ASSERT(false, "Unsupported buffer source for Draco compression", arg);
           }},
       buffer.data);
 
@@ -377,8 +359,7 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
   decoder_buffer.Init(draco_data.data(), draco_data.size());
   auto decode_result = decoder.DecodeMeshFromBuffer(&decoder_buffer);
   if (!decode_result.ok()) {
-    MR_ERROR("Failed to decode Draco mesh:",
-        decode_result.status().error_msg_string());
+    MR_ERROR("Failed to decode Draco mesh:", decode_result.status().error_msg_string());
     return false;
   }
 
@@ -387,10 +368,8 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
   // Process indices
   if (primitive.indicesAccessor.has_value()) {
     auto &indices_accessor = asset.accessors[primitive.indicesAccessor.value()];
-    size_t component_size =
-        std::max<size_t>(byte_size(indices_accessor.componentType),
-            1 + (mesh->num_points() > UINT8_MAX) +
-                ((mesh->num_points() > UINT16_MAX) << 1));
+    size_t component_size = std::max<size_t>(byte_size(indices_accessor.componentType),
+        1 + (mesh->num_points() > UINT8_MAX) + ((mesh->num_points() > UINT16_MAX) << 1));
 
     std::vector<uint8_t> index_buffer(mesh->num_faces() * 3 * component_size);
     decode_draco_index_buffer(mesh.get(), component_size, index_buffer);
@@ -398,22 +377,19 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
     // Convert to uint32_t indices for our mesh format
     out_indices.resize(mesh->num_faces() * 3);
     if (component_size == 1) {
-      const uint8_t *src =
-          reinterpret_cast<const uint8_t *>(index_buffer.data());
+      const uint8_t *src = reinterpret_cast<const uint8_t *>(index_buffer.data());
       for (size_t i = 0; i < out_indices.size(); ++i) {
         out_indices[i] = src[i];
       }
     }
     else if (component_size == 2) {
-      const uint16_t *src =
-          reinterpret_cast<const uint16_t *>(index_buffer.data());
+      const uint16_t *src = reinterpret_cast<const uint16_t *>(index_buffer.data());
       for (size_t i = 0; i < out_indices.size(); ++i) {
         out_indices[i] = src[i];
       }
     }
     else {
-      const uint32_t *src =
-          reinterpret_cast<const uint32_t *>(index_buffer.data());
+      const uint32_t *src = reinterpret_cast<const uint32_t *>(index_buffer.data());
       for (size_t i = 0; i < out_indices.size(); ++i) {
         out_indices[i] = src[i];
       }
@@ -422,36 +398,37 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
 
   // Process attributes
   out_positions.resize(mesh->num_points());
-  out_attributes.resize(mesh->num_points());
+  if (is_enabled(options, mr::Options::LoadMeshAttributes)) {
+    out_attributes.resize(mesh->num_points());
+  }
 
-  for (const auto &[attribute_name, draco_attribute_id] :
-      primitive.dracoCompression->attributes) {
+  for (const auto &[attribute_name, draco_attribute_id] : primitive.dracoCompression->attributes) {
     if (attribute_name.empty()) {
       continue;
     }
 
-    const draco::PointAttribute *draco_attr =
-        mesh->GetAttributeByUniqueId(draco_attribute_id);
+    if (attribute_name != "POSITION" && is_disabled(options, mr::Options::LoadMeshAttributes)) {
+      continue;
+    }
+
+    const draco::PointAttribute *draco_attr = mesh->GetAttributeByUniqueId(draco_attribute_id);
     if (!draco_attr)
       continue;
 
     // Get the original accessor to determine component type
-    fastgltf::ComponentType component_type =
-        fastgltf::ComponentType::Float; // default
-    auto attr_accessor =
-        primitive.dracoCompression->findAttribute(attribute_name);
-    if (attr_accessor == nullptr)
+    fastgltf::ComponentType component_type = fastgltf::ComponentType::Float; // default
+    auto attr_accessor = primitive.dracoCompression->findAttribute(attribute_name);
+    if (attr_accessor == nullptr) {
       continue;
+    }
     auto &accessor = asset.accessors[attr_accessor->accessorIndex];
     component_type = accessor.componentType;
 
     std::vector<uint8_t> attr_buffer;
     attr_buffer.resize(mesh->num_points() * draco_attr->num_components() *
-                       std::max(byte_size(component_type),
-                           byte_size(draco_attr->data_type())));
+                       std::max(byte_size(component_type), byte_size(draco_attr->data_type())));
 
-    if (!get_attribute_for_all_points(
-            component_type, mesh.get(), draco_attr, attr_buffer)) {
+    if (!get_attribute_for_all_points(component_type, mesh.get(), draco_attr, attr_buffer)) {
       MR_ERROR("Failed to decode Draco attribute:", attribute_name);
       continue;
     }
@@ -475,7 +452,9 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
         out_attributes[i].texcoord = {src[i * 2], src[i * 2 + 1]};
       }
     }
-    // Add more attribute types as needed
+    else {
+      DEBUG_ASSERT(false, "Unhandled attribute", attribute_name);
+    }
   }
 
   return true;
@@ -487,9 +466,8 @@ static bool decode_draco_primitive(const fastgltf::Asset &asset,
  * leaves attributes partially defaulted if normals are missing.
  * Asserts that indices accessor exists.
  */
-static std::optional<Mesh> get_mesh_from_primitive(Options options,
-    const fastgltf::Asset &asset,
-    const fastgltf::Primitive &primitive)
+static std::optional<Mesh> get_mesh_from_primitive(
+    Options options, const fastgltf::Asset &asset, const fastgltf::Primitive &primitive)
 {
   ZoneScoped;
 
@@ -498,7 +476,7 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
   Mesh mesh;
 
   if (decode_draco_primitive(
-          asset, primitive, mesh.positions, mesh.attributes, mesh.indices)) {
+          options, asset, primitive, mesh.positions, mesh.attributes, mesh.indices)) {
     ASSERT(mesh.lods.size() == 0);
     mesh.lods.emplace_back(IndexSpan(mesh.indices.data(), mesh.indices.size()),
         IndexSpan() // empty shadow indices
@@ -527,7 +505,10 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
       MR_ERROR("Mesh has no material specified");
     }
 
-    ASSERT(mesh.positions.size() == mesh.attributes.size());
+    if (mr::is_enabled(options, mr::Options::LoadMeshAttributes)) {
+      ASSERT(mesh.positions.size() == mesh.attributes.size());
+    }
+
     return mesh;
   }
   else {
@@ -545,9 +526,9 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
             return;
           }
           mesh.positions.reserve(positions.value().accessor.count);
-          fastgltf::iterateAccessor<glm::vec3>(asset,
-              positions.value().accessor,
-              [&](glm::vec3 v) { mesh.positions.push_back({v.x, v.y, v.z}); });
+          fastgltf::iterateAccessor<glm::vec3>(asset, positions.value().accessor, [&](glm::vec3 v) {
+            mesh.positions.push_back({v.x, v.y, v.z});
+          });
           auto min_pos = mesh.positions[0];
           auto max_pos = mesh.positions[0];
           for (const auto &pos : mesh.positions) {
@@ -575,14 +556,12 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
               std::lock_guard lock(attributes_resize_mutex);
               mesh.attributes.resize(count);
             }
-            ASSERT(
-                normals.value().accessor.type == fastgltf::AccessorType::Vec3,
+            ASSERT(normals.value().accessor.type == fastgltf::AccessorType::Vec3,
                 "Normals are not in vec3 format",
                 getAccessorTypeName(normals.value().accessor.type));
-            fastgltf::iterateAccessorWithIndex<glm::vec3>(
-                asset, normals.value().accessor, [&](glm::vec3 v, int index) {
-                  mesh.attributes[index].normal = {v.x, v.y, v.z};
-                });
+            fastgltf::iterateAccessorWithIndex<glm::vec3>(asset,
+                normals.value().accessor,
+                [&](glm::vec3 v, int index) { mesh.attributes[index].normal = {v.x, v.y, v.z}; });
           }
         },
         [&]() {
@@ -594,37 +573,29 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
               get_accessor_by_name(options, asset, primitive, "TEXCOORD_0");
           if (texcoords.has_value()) {
             mesh.attributes.is_texcoord_present = true;
-            ASSERT(texcoords.value().accessor.type ==
-                   fastgltf::AccessorType::Vec2);
+            ASSERT(texcoords.value().accessor.type == fastgltf::AccessorType::Vec2);
             {
               std::lock_guard lock(attributes_resize_mutex);
               mesh.attributes.resize(texcoords.value().accessor.count);
             }
-            fastgltf::iterateAccessorWithIndex<glm::vec2>(
-                asset, texcoords.value().accessor, [&](glm::vec2 v, int index) {
-                  mesh.attributes[index].texcoord = {v.x, v.y};
-                });
+            fastgltf::iterateAccessorWithIndex<glm::vec2>(asset,
+                texcoords.value().accessor,
+                [&](glm::vec2 v, int index) { mesh.attributes[index].texcoord = {v.x, v.y}; });
           }
         },
         [&]() {
           if (!primitive.indicesAccessor.has_value()) {
-            MR_ERROR(
-                "Primitive didn't contain indices - we don't support that");
+            MR_ERROR("Primitive didn't contain indices - we don't support that");
             error = true;
             return;
           }
 
-          auto &idxAccessor =
-              asset.accessors[primitive.indicesAccessor.value()];
+          auto &idxAccessor = asset.accessors[primitive.indicesAccessor.value()];
           mesh.indices.resize(idxAccessor.count);
-          fastgltf::copyFromAccessor<std::uint32_t>(
-              asset, idxAccessor, mesh.indices.data());
+          fastgltf::copyFromAccessor<std::uint32_t>(asset, idxAccessor, mesh.indices.data());
 
           ASSERT(mesh.lods.size() == 0);
-          mesh.lods.emplace_back(
-              IndexSpan(mesh.indices.data(), mesh.indices.size()),
-              IndexSpan() // empty shadow indices
-          );
+          mesh.lods.emplace_back(IndexSpan(mesh.indices.data(), mesh.indices.size()), IndexSpan());
         },
         [&primitive, &mesh]() {
           if (primitive.materialIndex) {
@@ -634,13 +605,13 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
             MR_ERROR("Mesh has no material specified");
           }
         });
+
     if (error) {
       return std::nullopt;
     }
   }
 
-  if (mesh.attributes.size() != 0 &&
-      mesh.positions.size() != mesh.attributes.size()) {
+  if (mesh.attributes.size() != 0 && mesh.positions.size() != mesh.attributes.size()) {
     return std::nullopt;
   }
 
@@ -653,8 +624,7 @@ static std::optional<Mesh> get_mesh_from_primitive(Options options,
  * Iterates scene nodes to gather transforms, then converts all primitives
  * into Mesh objects, preserving names.
  */
-static std::vector<Mesh> get_meshes_from_asset(
-    Options options, fastgltf::Asset *asset)
+static std::vector<Mesh> get_meshes_from_asset(Options options, fastgltf::Asset *asset)
 {
   ZoneScoped;
 
@@ -674,20 +644,17 @@ static std::vector<Mesh> get_meshes_from_asset(
           if (node.meshIndex.has_value()) {
             if (node.instancingAttributes.size() > 0) {
               std::vector<fastgltf::math::fvec3> translations;
-              const auto &translation_iterator =
-                  node.findInstancingAttribute("TRANSLATION");
+              const auto &translation_iterator = node.findInstancingAttribute("TRANSLATION");
               ASSERT(translation_iterator != node.instancingAttributes.cend());
               const auto &translation_accessor =
                   get_accessor_from_attribute(*asset, *translation_iterator);
               translations.reserve(translation_accessor.count);
-              fastgltf::iterateAccessor<fastgltf::math::fvec3>(
-                  *asset, translation_accessor, [&](fastgltf::math::fvec3 v) {
-                    translations.push_back({v.x(), v.y(), v.z()});
-                  });
+              fastgltf::iterateAccessor<fastgltf::math::fvec3>(*asset,
+                  translation_accessor,
+                  [&](fastgltf::math::fvec3 v) { translations.push_back({v.x(), v.y(), v.z()}); });
 
               std::vector<fastgltf::math::fquat> rotations;
-              const auto &rotation_iterator =
-                  node.findInstancingAttribute("ROTATION");
+              const auto &rotation_iterator = node.findInstancingAttribute("ROTATION");
               ASSERT(rotation_iterator != node.instancingAttributes.cend());
               const auto &rotation_accessor =
                   get_accessor_from_attribute(*asset, *rotation_iterator);
@@ -697,38 +664,37 @@ static std::vector<Mesh> get_meshes_from_asset(
                   [&](fastgltf::math::fquat q) { rotations.push_back(q); });
 
               std::vector<fastgltf::math::fvec3> scales;
-              const auto &scale_iterator =
-                  node.findInstancingAttribute("SCALE");
+              const auto &scale_iterator = node.findInstancingAttribute("SCALE");
               ASSERT(scale_iterator != node.instancingAttributes.cend());
-              const auto &scale_accessor =
-                  get_accessor_from_attribute(*asset, *scale_iterator);
+              const auto &scale_accessor = get_accessor_from_attribute(*asset, *scale_iterator);
               scales.reserve(scale_accessor.count);
-              fastgltf::iterateAccessor<fastgltf::math::fvec3>(
-                  *asset, scale_accessor, [&](fastgltf::math::fvec3 v) {
-                    scales.push_back({v.x(), v.y(), v.z()});
-                  });
+              fastgltf::iterateAccessor<fastgltf::math::fvec3>(*asset,
+                  scale_accessor,
+                  [&](fastgltf::math::fvec3 v) { scales.push_back({v.x(), v.y(), v.z()}); });
 
               transforms[*node.meshIndex].reserve(scales.size());
-              for (const auto &[t, r, s] :
-                  std::views::zip(translations, rotations, scales)) {
-                fastgltf::math::fmat4x4 res =
-                    scale(rotate(translate(matrix, t), r), s);
+              for (const auto &[t, r, s] : std::views::zip(translations, rotations, scales)) {
+                fastgltf::math::fmat4x4 res = scale(rotate(translate(matrix, t), r), s);
+                // clang-format off
                 transforms[*node.meshIndex].push_back({
                     res[0][0], res[1][0], res[2][0], res[3][0],
                     res[0][1], res[1][1], res[2][1], res[3][1],
                     res[0][2], res[1][2], res[2][2], res[3][2],
                     res[0][3], res[1][3], res[2][3], res[3][3],
                 });
+                // clang-format on
               }
             }
 
             glm::mat4 t = glm::make_mat4(matrix.data());
+            // clang-format off
             transforms[*node.meshIndex].push_back({
                 t[0][0], t[1][0], t[2][0], t[3][0],
                 t[0][1], t[1][1], t[2][1], t[3][1],
                 t[0][2], t[1][2], t[2][2], t[3][2],
                 t[0][3], t[1][3], t[2][3], t[3][3],
             });
+            // clang-format on
           }
         });
   }
@@ -743,8 +709,7 @@ static std::vector<Mesh> get_meshes_from_asset(
       const fastgltf::Mesh &gltfMesh = asset->meshes[i];
       tbb::parallel_for<int>(0, gltfMesh.primitives.size(), [&](int j) {
         const auto &primitive = gltfMesh.primitives[j];
-        std::optional<Mesh> mesh_opt =
-            get_mesh_from_primitive(options, *asset, primitive);
+        std::optional<Mesh> mesh_opt = get_mesh_from_primitive(options, *asset, primitive);
         if (mesh_opt.has_value()) {
           mesh_opt->transforms = transforms[i];
           mesh_opt->name = std::move(gltfMesh.name);
@@ -756,8 +721,7 @@ static std::vector<Mesh> get_meshes_from_asset(
 
   std::vector<Mesh> result;
   result.resize(meshes.size());
-  tbb::parallel_for<int>(
-      0, meshes.size(), [&](int i) { result[i] = std::move(meshes[i]); });
+  tbb::parallel_for<int>(0, meshes.size(), [&](int i) { result[i] = std::move(meshes[i]); });
 
   return result;
 }
@@ -778,16 +742,13 @@ static void resize_image(ImageData &image,
 
   size_t desired_pixel_size = desired_component_number * component_size;
 
-  size_t desired_byte_size =
-      pixel_size * pixel_count / component_number * desired_component_number;
-  std::unique_ptr<std::byte[]> new_ptr =
-      std::make_unique<std::byte[]>(desired_byte_size);
+  size_t desired_byte_size = pixel_size * pixel_count / component_number * desired_component_number;
+  std::unique_ptr<std::byte[]> new_ptr = std::make_unique<std::byte[]>(desired_byte_size);
 
   for (int i = 0; i < pixel_count; i++) {
     size_t pixel_byte_offset = i * pixel_size;
     size_t desired_pixel_byte_offset = i * desired_pixel_size;
-    for (int j = 0; j < std::min(component_number, desired_component_number);
-        j++) {
+    for (int j = 0; j < std::min(component_number, desired_component_number); j++) {
       for (int k = 0; k < component_size; k++) {
         new_ptr[desired_pixel_byte_offset + j * component_size + k] =
             image.pixels[pixel_byte_offset + j * component_size + k];
@@ -800,8 +761,7 @@ static void resize_image(ImageData &image,
 
   int offset = 0;
   for (int i = 0; i < image.mips.size(); i++) {
-    size_t desired_mip_size =
-        image.mips[i].size() / component_number * desired_component_number;
+    size_t desired_mip_size = image.mips[i].size() / component_number * desired_component_number;
     image.mips[i] = {image.pixels.get() + offset, desired_mip_size};
     offset += desired_mip_size;
   }
@@ -813,8 +773,7 @@ static void resize_image(ImageData &image,
  * Supports URI, embedded vector, and buffer view sources. Returns an
  * ImageData with owned memory; logs warnings for unexpected sources.
  */
-static std::optional<ImageData> get_image_from_gltf(
-    const std::filesystem::path &directory,
+static std::optional<ImageData> get_image_from_gltf(const std::filesystem::path &directory,
     Options options,
     const fastgltf::Asset &asset,
     const fastgltf::Image &image)
@@ -823,8 +782,7 @@ static std::optional<ImageData> get_image_from_gltf(
 
   ImageData new_image{};
 
-  auto load_dds_from_file = [](const std::string &path,
-                                ImageData &new_image) -> bool {
+  auto load_dds_from_file = [](const std::string &path, ImageData &new_image) -> bool {
     ZoneScopedN("DDS import from file");
 
     dds::Image dds_image;
@@ -839,8 +797,7 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.width = dds_image.width;
     new_image.height = dds_image.height;
     new_image.depth = dds_image.arraySize;
-    new_image.format = (vk::Format)dds::getVulkanFormat(
-        dds_image.format, dds_image.supportsAlpha);
+    new_image.format = (vk::Format)dds::getVulkanFormat(dds_image.format, dds_image.supportsAlpha);
     new_image.bytes_per_pixel = dds::getBitsPerPixel(dds_image.format) / 8;
 
     new_image.pixels.reset((std::byte *)dds_image.data.release());
@@ -853,8 +810,7 @@ static std::optional<ImageData> get_image_from_gltf(
     }
     new_image.pixels.size(size);
 
-    return new_image.width > 0 && new_image.height > 0 &&
-           new_image.bytes_per_pixel > 0;
+    return new_image.width > 0 && new_image.height > 0 && new_image.bytes_per_pixel > 0;
   };
 
   auto load_dds_from_memory = [](const std::byte *data,
@@ -875,8 +831,7 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.width = dds_image.width;
     new_image.height = dds_image.height;
     new_image.depth = dds_image.arraySize;
-    new_image.format = (vk::Format)dds::getVulkanFormat(
-        dds_image.format, dds_image.supportsAlpha);
+    new_image.format = (vk::Format)dds::getVulkanFormat(dds_image.format, dds_image.supportsAlpha);
     new_image.bytes_per_pixel = dds::getBitsPerPixel(dds_image.format) / 8;
 
     new_image.pixels.reset((std::byte *)dds_image.data.release());
@@ -887,23 +842,18 @@ static std::optional<ImageData> get_image_from_gltf(
     }
     new_image.pixels.size(size);
 
-    return new_image.width > 0 && new_image.height > 0 &&
-           new_image.bytes_per_pixel > 0;
+    return new_image.width > 0 && new_image.height > 0 && new_image.bytes_per_pixel > 0;
   };
 
-  auto load_ktx2_from_file = [](const std::string &path,
-                                 ImageData &new_image) -> bool {
+  auto load_ktx2_from_file = [](const std::string &path, ImageData &new_image) -> bool {
     ZoneScopedN("KTX import from file");
 
     ktxTexture2 *tex;
-    KTX_error_code result = ktxTexture_CreateFromNamedFile(path.c_str(),
-        KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
-        (ktxTexture **)&tex);
+    KTX_error_code result = ktxTexture_CreateFromNamedFile(
+        path.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, (ktxTexture **)&tex);
 
-    std::unique_ptr<ktxTexture2, void (*)(ktxTexture2*)> ktx_texture {
-      tex,
-      +[](ktxTexture2 *ptr) { ktxTexture_Destroy((ktxTexture *)ptr); }
-    };
+    std::unique_ptr<ktxTexture2, void (*)(ktxTexture2 *)> ktx_texture{
+        tex, +[](ktxTexture2 *ptr) { ktxTexture_Destroy((ktxTexture *)ptr); }};
     if (result != KTX_SUCCESS)
       return false;
 
@@ -924,8 +874,7 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.pixels.size(ktx_texture->dataSize);
     std::memcpy(new_image.pixels.get(), ktx_texture->pData, ktx_texture->dataSize);
 
-    for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels;
-        mip_index++) {
+    for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels; mip_index++) {
       uint32_t copy_width = new_image.width >> mip_index;
       uint32_t copy_height = new_image.height >> mip_index;
       ktx_size_t copy_buffer_offset = 0;
@@ -949,16 +898,11 @@ static std::optional<ImageData> get_image_from_gltf(
     ZoneScopedN("KTX import from memory");
 
     ktxTexture2 *tex;
-    KTX_error_code result =
-        ktxTexture2_CreateFromMemory((const ktx_uint8_t *)data,
-            size,
-            KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
-            &tex);
+    KTX_error_code result = ktxTexture2_CreateFromMemory(
+        (const ktx_uint8_t *)data, size, KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &tex);
 
-    std::unique_ptr<ktxTexture2, void (*)(ktxTexture2*)> ktx_texture {
-      tex,
-      +[](ktxTexture2 *ptr) { ktxTexture_Destroy((ktxTexture *)ptr); }
-    };
+    std::unique_ptr<ktxTexture2, void (*)(ktxTexture2 *)> ktx_texture{
+        tex, +[](ktxTexture2 *ptr) { ktxTexture_Destroy((ktxTexture *)ptr); }};
 
     if (result != KTX_SUCCESS)
       return false;
@@ -980,8 +924,7 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.pixels.size(ktx_texture->dataSize);
     std::memcpy(new_image.pixels.get(), ktx_texture->pData, ktx_texture->dataSize);
 
-    for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels;
-        mip_index++) {
+    for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels; mip_index++) {
       uint32_t copy_width = new_image.width >> mip_index;
       uint32_t copy_height = new_image.height >> mip_index;
       ktx_size_t copy_buffer_offset = 0;
@@ -998,12 +941,10 @@ static std::optional<ImageData> get_image_from_gltf(
     return true;
   };
 
-  auto try_load_wuffs_from_file = [](const std::string &path,
-                                      ImageData &new_image) -> bool {
+  auto try_load_wuffs_from_file = [](const std::string &path, ImageData &new_image) -> bool {
     ZoneScopedN("WUFFS import from file");
 
-    std::unique_ptr<FILE, int (*)(FILE *)> file(
-        fopen(path.c_str(), "rb"), fclose);
+    std::unique_ptr<FILE, int (*)(FILE *)> file(fopen(path.c_str(), "rb"), fclose);
     if (file.get() == nullptr) {
       MR_INFO("Failed to open image file {}", path.c_str());
       return false;
@@ -1036,8 +977,7 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.width = tab.width / new_image.bytes_per_pixel;
     new_image.height = tab.height;
 
-    if (new_image.width <= 0 || new_image.height <= 0 ||
-        new_image.bytes_per_pixel <= 0) {
+    if (new_image.width <= 0 || new_image.height <= 0 || new_image.bytes_per_pixel <= 0) {
       MR_INFO("Image format bits_per_pixel % 8 != 0. "
               "To handle such cases you'd need to change public API from "
               "byte_size to bit_size");
@@ -1083,8 +1023,7 @@ static std::optional<ImageData> get_image_from_gltf(
     new_image.width = tab.width / new_image.bytes_per_pixel;
     new_image.height = tab.height;
 
-    if (new_image.width <= 0 || new_image.height <= 0 ||
-        new_image.bytes_per_pixel <= 0) {
+    if (new_image.width <= 0 || new_image.height <= 0 || new_image.bytes_per_pixel <= 0) {
       return false;
     }
 
@@ -1097,8 +1036,7 @@ static std::optional<ImageData> get_image_from_gltf(
   auto try_load_with_fallback = [&](const std::byte *data,
                                     size_t size,
                                     fastgltf::MimeType mimeType,
-                                    const std::string &context_info =
-                                        "") -> bool {
+                                    const std::string &context_info = "") -> bool {
     if (mimeType == fastgltf::MimeType::DDS) {
       return load_dds_from_memory(data, size, new_image, context_info);
     }
@@ -1111,8 +1049,7 @@ static std::optional<ImageData> get_image_from_gltf(
       return true;
     }
 
-    if (mimeType == fastgltf::MimeType::GltfBuffer ||
-        mimeType == fastgltf::MimeType::OctetStream) {
+    if (mimeType == fastgltf::MimeType::GltfBuffer || mimeType == fastgltf::MimeType::OctetStream) {
       if (load_dds_from_memory(data, size, new_image, context_info)) {
         return true;
       }
@@ -1126,8 +1063,7 @@ static std::optional<ImageData> get_image_from_gltf(
 
   auto try_load_file_with_fallback = [&](const std::string &path,
                                          fastgltf::MimeType mimeType) -> bool {
-    if (mimeType == fastgltf::MimeType::DDS ||
-        std::filesystem::path(path).extension() == ".dds") {
+    if (mimeType == fastgltf::MimeType::DDS || std::filesystem::path(path).extension() == ".dds") {
       return load_dds_from_file(path, new_image);
     }
 
@@ -1140,10 +1076,8 @@ static std::optional<ImageData> get_image_from_gltf(
       return true;
     }
 
-    if (mimeType == fastgltf::MimeType::GltfBuffer ||
-        mimeType == fastgltf::MimeType::OctetStream) {
-      MR_INFO(
-          "WUFFS failed for ambiguous mime type, trying DDS then KTX2", path);
+    if (mimeType == fastgltf::MimeType::GltfBuffer || mimeType == fastgltf::MimeType::OctetStream) {
+      MR_INFO("WUFFS failed for ambiguous mime type, trying DDS then KTX2", path);
 
       if (load_dds_from_file(path, new_image)) {
         return true;
@@ -1158,9 +1092,7 @@ static std::optional<ImageData> get_image_from_gltf(
 
   std::visit(
       fastgltf::visitor{
-          [](auto &arg) {
-            ASSERT(false, "Unsupported image source in a GLTF file", arg);
-          },
+          [](auto &arg) { ASSERT(false, "Unsupported image source in a GLTF file", arg); },
           [&](const fastgltf::sources::URI &filePath) {
             ASSERT(filePath.fileByteOffset == 0,
                 "Offsets with files are not supported because plain wuffs' C++ "
@@ -1171,13 +1103,11 @@ static std::optional<ImageData> get_image_from_gltf(
                 " - we don't support that (local files only)",
                 filePath.uri.c_str());
 
-            std::filesystem::path absolute_path =
-                directory / filePath.uri.fspath();
+            std::filesystem::path absolute_path = directory / filePath.uri.fspath();
             const std::string path = std::move(absolute_path).string();
 
             if (!try_load_file_with_fallback(path, filePath.mimeType)) {
-              PANIC(
-                  "Failed to load image file with all available methods", path);
+              PANIC("Failed to load image file with all available methods", path);
             }
           },
           [&](const fastgltf::sources::Array &array) {
@@ -1205,23 +1135,19 @@ static std::optional<ImageData> get_image_from_gltf(
             auto &buffer = asset.buffers[bufferView.bufferIndex];
 
             std::visit(
-                fastgltf::visitor{
-                    [](auto &arg) {
-                      ASSERT(false,
-                          "Try to process image from buffer view but not from "
-                          "RAM "
-                          "(should be illegal because of LoadExternalBuffers)",
-                          arg);
-                    },
+                fastgltf::visitor{[](auto &arg) {
+                                    ASSERT(false,
+                                        "Try to process image from buffer view but not from "
+                                        "RAM "
+                                        "(should be illegal because of LoadExternalBuffers)",
+                                        arg);
+                                  },
                     [&](const fastgltf::sources::Array &array) {
                       ZoneScopedN("Import from buffer view array");
                       const std::byte *data =
-                          (const std::byte *)array.bytes.data() +
-                          bufferView.byteOffset;
-                      if (!try_load_with_fallback(data,
-                              bufferView.byteLength,
-                              array.mimeType,
-                              "buffer view array")) {
+                          (const std::byte *)array.bytes.data() + bufferView.byteOffset;
+                      if (!try_load_with_fallback(
+                              data, bufferView.byteLength, array.mimeType, "buffer view array")) {
                         PANIC("Failed to load image from buffer view array "
                               "with all available methods");
                       }
@@ -1229,12 +1155,9 @@ static std::optional<ImageData> get_image_from_gltf(
                     [&](const fastgltf::sources::Vector &vector) {
                       ZoneScopedN("Import from buffer view vector");
                       const std::byte *data =
-                          (const std::byte *)vector.bytes.data() +
-                          bufferView.byteOffset;
-                      if (!try_load_with_fallback(data,
-                              bufferView.byteLength,
-                              vector.mimeType,
-                              "buffer view vector")) {
+                          (const std::byte *)vector.bytes.data() + bufferView.byteOffset;
+                      if (!try_load_with_fallback(
+                              data, bufferView.byteLength, vector.mimeType, "buffer view vector")) {
                         PANIC("Failed to load image from buffer view vector "
                               "with all available methods");
                       }
@@ -1279,18 +1202,15 @@ static std::optional<ImageData> get_image_from_gltf(
       }
     case 4:
       if (!(options & Options::Allow4ComponentImages)) {
-        MR_ERROR(
-            "Disallowing 4-component images makes lossless import impossible. "
-            "Transfer your images to 3-components (or less) offline!");
+        MR_ERROR("Disallowing 4-component images makes lossless import impossible. "
+                 "Transfer your images to 3-components (or less) offline!");
       }
       else {
         new_image.format = vk::Format::eB8G8R8A8Srgb;
         break;
       }
     default:
-      PANIC("Failed to determine number of image components",
-          new_image.bytes_per_pixel,
-          options);
+      PANIC("Failed to determine number of image components", new_image.bytes_per_pixel, options);
       break;
     }
   }
@@ -1340,12 +1260,10 @@ static std::expected<TextureData, std::string_view> get_texture_from_gltf(
   }
 
   fastgltf::Image &img = asset.images[img_idx];
-  std::optional<ImageData> img_data_opt =
-      get_image_from_gltf(directory, options, asset, img);
+  std::optional<ImageData> img_data_opt = get_image_from_gltf(directory, options, asset, img);
   ASSERT(img_data_opt.has_value(), "Unable to load image");
 
-  static auto convert_filter =
-      [](fastgltf::Optional<fastgltf::Filter> filter) -> vk::Filter {
+  static auto convert_filter = [](fastgltf::Optional<fastgltf::Filter> filter) -> vk::Filter {
     if (!filter.has_value()) {
       return vk::Filter();
     }
@@ -1359,10 +1277,7 @@ static std::expected<TextureData, std::string_view> get_texture_from_gltf(
     case fastgltf::Filter::LinearMipMapNearest:
       return vk::Filter::eLinear;
     }
-    ASSERT(false,
-        "Unhandled Sampler::Filter",
-        filter.value(),
-        (int)filter.value());
+    ASSERT(false, "Unhandled Sampler::Filter", filter.value(), (int)filter.value());
     return vk::Filter();
   };
 
@@ -1378,15 +1293,9 @@ static std::expected<TextureData, std::string_view> get_texture_from_gltf(
 }
 
 /** Convert normalized vec4 to Color. */
-static Color color_from_nvec4(fastgltf::math::nvec4 v)
-{
-  return {v.x(), v.y(), v.z(), v.w()};
-}
+static Color color_from_nvec4(fastgltf::math::nvec4 v) { return {v.x(), v.y(), v.z(), v.w()}; }
 /** Convert normalized vec3 to Color with alpha = 1. */
-static Color color_from_nvec3(fastgltf::math::nvec3 v)
-{
-  return {v.x(), v.y(), v.z(), 1.f};
-}
+static Color color_from_nvec3(fastgltf::math::nvec3 v) { return {v.x(), v.y(), v.z(), 1.f}; }
 
 /**
  * Build MaterialData array from glTF materials.
@@ -1395,9 +1304,7 @@ static Color color_from_nvec3(fastgltf::math::nvec3 v)
  * errors/warnings for failed texture loads and continues gracefully.
  */
 static std::vector<MaterialData> get_materials_from_asset(
-    const std::filesystem::path &directory,
-    fastgltf::Asset *asset,
-    Options options)
+    const std::filesystem::path &directory, fastgltf::Asset *asset, Options options)
 {
   ZoneScoped;
 
@@ -1406,14 +1313,12 @@ static std::vector<MaterialData> get_materials_from_asset(
   std::vector<MaterialData> materials;
   materials.resize(asset->materials.size());
 
-  tbb::parallel_for(0uz,
-      asset->materials.size(),
-      [&asset, &materials, &directory, &options](size_t i) {
+  tbb::parallel_for(
+      0uz, asset->materials.size(), [&asset, &materials, &directory, &options](size_t i) {
         fastgltf::Material &src = asset->materials[i];
         MaterialData &dst = materials[i];
 
-        dst.constants.base_color_factor =
-            color_from_nvec4(src.pbrData.baseColorFactor);
+        dst.constants.base_color_factor = color_from_nvec4(src.pbrData.baseColorFactor);
         dst.constants.roughness_factor = src.pbrData.roughnessFactor;
         dst.constants.metallic_factor = src.pbrData.metallicFactor;
         dst.constants.emissive_color = color_from_nvec3(src.emissiveFactor);
@@ -1454,11 +1359,8 @@ static std::vector<MaterialData> get_materials_from_asset(
             },
             [&] {
               if (src.normalTexture.has_value()) {
-                auto exp = get_texture_from_gltf(directory,
-                    options,
-                    *asset,
-                    TextureType::NormalMap,
-                    src.normalTexture.value());
+                auto exp = get_texture_from_gltf(
+                    directory, options, *asset, TextureType::NormalMap, src.normalTexture.value());
                 if (exp.has_value()) {
                   textures.emplace_back(std::move(exp.value()));
                 }
@@ -1469,21 +1371,19 @@ static std::vector<MaterialData> get_materials_from_asset(
             },
             [&] {
               if (src.packedOcclusionRoughnessMetallicTextures &&
-                  src.packedOcclusionRoughnessMetallicTextures
-                      ->occlusionRoughnessMetallicTexture.has_value()) {
+                  src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture
+                      .has_value()) {
                 auto exp = get_texture_from_gltf(directory,
                     options,
                     *asset,
                     TextureType::OcclusionRoughnessMetallic,
-                    src.packedOcclusionRoughnessMetallicTextures
-                        ->occlusionRoughnessMetallicTexture.value());
+                    src.packedOcclusionRoughnessMetallicTextures->occlusionRoughnessMetallicTexture
+                        .value());
                 if (exp.has_value()) {
                   textures.emplace_back(std::move(exp.value()));
                 }
                 else {
-                  MR_ERROR(
-                      "Loading packed Occlusion Roughness Metallic texture - ",
-                      exp.error());
+                  MR_ERROR("Loading packed Occlusion Roughness Metallic texture - ", exp.error());
                 }
               }
               else if (src.pbrData.metallicRoughnessTexture.has_value()) {
@@ -1497,8 +1397,7 @@ static std::vector<MaterialData> get_materials_from_asset(
                   textures.emplace_back(std::move(exp.value()));
                 }
                 else {
-                  MR_ERROR(
-                      "Loading Metallic Roughness texture - ", exp.error());
+                  MR_ERROR("Loading Metallic Roughness texture - ", exp.error());
                 }
 
                 if (src.occlusionTexture.has_value()) {
@@ -1516,8 +1415,7 @@ static std::vector<MaterialData> get_materials_from_asset(
                 }
               }
               else if (src.specularGlossiness.get() &&
-                       src.specularGlossiness->specularGlossinessTexture
-                           .has_value()) {
+                       src.specularGlossiness->specularGlossinessTexture.has_value()) {
                 auto exp = get_texture_from_gltf(directory,
                     options,
                     *asset,
@@ -1527,8 +1425,7 @@ static std::vector<MaterialData> get_materials_from_asset(
                   textures.emplace_back(std::move(exp.value()));
                 }
                 else {
-                  MR_ERROR(
-                      "Loading Specular Glossiness texture - ", exp.error());
+                  MR_ERROR("Loading Specular Glossiness texture - ", exp.error());
                 }
               }
             },
@@ -1592,59 +1489,53 @@ void add_loader_nodes(FlowGraph &graph, const Options &options)
 {
   ZoneScoped;
 
-  graph.asset_loader =
-      std::make_unique<tbb::flow::input_node<fastgltf::Asset *>>(graph.graph,
-          [&graph](oneapi::tbb::flow_control &fc) -> fastgltf::Asset * {
-            if (graph.model) {
-              fc.stop();
-              return nullptr;
-            }
-
-            ZoneScoped;
-            graph.asset = get_asset_from_path(graph.path);
-            if (!graph.asset) {
-              MR_ERROR(
-                  "Failed to load asset from path: {}", graph.path.string());
-              fc.stop();
-              return nullptr;
-            }
-
-            graph.model = std::make_unique<Model>();
-
-            return &graph.asset.value();
-          });
-
-  graph.meshes_load = std::make_unique<
-      tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
-      graph.graph,
-      tbb::flow::unlimited,
-      [&graph, &options](fastgltf::Asset *asset) -> fastgltf::Asset * {
-        if (asset != nullptr) {
-          ZoneScoped;
-          graph.model->meshes = get_meshes_from_asset(options, asset);
+  graph.asset_loader = std::make_unique<tbb::flow::input_node<fastgltf::Asset *>>(
+      graph.graph, [&graph](oneapi::tbb::flow_control &fc) -> fastgltf::Asset * {
+        if (graph.model) {
+          fc.stop();
+          return nullptr;
         }
-        return asset;
+
+        ZoneScoped;
+        graph.asset = get_asset_from_path(graph.path);
+        if (!graph.asset) {
+          MR_ERROR("Failed to load asset from path: {}", graph.path.string());
+          fc.stop();
+          return nullptr;
+        }
+
+        graph.model = std::make_unique<Model>();
+
+        return &graph.asset.value();
       });
 
-  graph.materials_load =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(graph.graph,
+  graph.meshes_load =
+      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(graph.graph,
           tbb::flow::unlimited,
-          [&graph, &options](fastgltf::Asset *asset) {
+          [&graph, &options](fastgltf::Asset *asset) -> fastgltf::Asset * {
             if (asset != nullptr) {
               ZoneScoped;
-              graph.model->materials = get_materials_from_asset(
-                  graph.path.parent_path(), &graph.asset.value(), options);
+              graph.model->meshes = get_meshes_from_asset(options, asset);
             }
+            return asset;
           });
 
-  graph.lights_load =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(
-          graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset *asset) {
-            if (asset != nullptr) {
-              ZoneScoped;
-              graph.model->lights = get_lights_from_asset(asset);
-            }
-          });
+  graph.materials_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(
+      graph.graph, tbb::flow::unlimited, [&graph, &options](fastgltf::Asset *asset) {
+        if (asset != nullptr) {
+          ZoneScoped;
+          graph.model->materials =
+              get_materials_from_asset(graph.path.parent_path(), &graph.asset.value(), options);
+        }
+      });
+
+  graph.lights_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(
+      graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset *asset) {
+        if (asset != nullptr) {
+          ZoneScoped;
+          graph.model->lights = get_lights_from_asset(asset);
+        }
+      });
 
   tbb::flow::make_edge(*graph.asset_loader, *graph.meshes_load);
   tbb::flow::make_edge(*graph.asset_loader, *graph.materials_load);
@@ -1665,8 +1556,7 @@ std::optional<Model> load(std::filesystem::path path, Options options)
   graph.asset_loader->activate();
   graph.graph.wait_for_all();
 
-  return graph.model.get() == nullptr ? std::nullopt
-                                      : std::optional(std::move(*graph.model));
+  return graph.model.get() == nullptr ? std::nullopt : std::optional(std::move(*graph.model));
 }
 } // namespace importer
 } // namespace mr

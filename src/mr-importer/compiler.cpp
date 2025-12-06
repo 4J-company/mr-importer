@@ -32,13 +32,18 @@ static Slang::ComPtr<slang::ISession> get_or_create_session()
       .format = SLANG_SPIRV,
       .profile = global_session->findProfile("spirv_1_5"),
   };
+
+  // clang-format off
   static constexpr std::array options{
-      slang::CompilerOptionEntry{slang::CompilerOptionName::EmitSpirvDirectly,
-                                 {slang::CompilerOptionValueKind::Int, 1}},
-      slang::CompilerOptionEntry{
-                                 slang::CompilerOptionName::UseUpToDateBinaryModule,
-                                 {slang::CompilerOptionValueKind::Int, 1}},
+    slang::CompilerOptionEntry {
+      slang::CompilerOptionName::EmitSpirvDirectly, {slang::CompilerOptionValueKind::Int, 1}
+    },
+    slang::CompilerOptionEntry {
+      slang::CompilerOptionName::UseUpToDateBinaryModule, {slang::CompilerOptionValueKind::Int, 1}
+    },
   };
+  // clang-format on
+
   static constexpr slang::SessionDesc session_desc{
       .targets = &target_desc,
       .targetCount = 1,
@@ -60,8 +65,8 @@ static Slang::ComPtr<slang::ISession> get_or_create_session()
  * On success returns a module; on failure returns an error blob containing
  * compiler diagnostics via std::unexpected.
  */
-static std::expected<Slang::ComPtr<slang::IModule>, Slang::ComPtr<slang::IBlob>>
-compile_module(slang::ISession *session, const std::filesystem::path &path)
+static std::expected<Slang::ComPtr<slang::IModule>, Slang::ComPtr<slang::IBlob>> compile_module(
+    slang::ISession *session, const std::filesystem::path &path)
 {
   Slang::ComPtr<slang::IModule> module;
   Slang::ComPtr<slang::IBlob> blob;
@@ -81,23 +86,54 @@ compile_module(slang::ISession *session, const std::filesystem::path &path)
   return module;
 }
 
-mr::Shader::Stage slang2importer(SlangStage stage) {
+mr::Shader::Stage slang2importer(SlangStage stage)
+{
   switch (stage) {
-    case SLANG_STAGE_VERTEX: return mr::Shader::Stage::Vertex; break;
-    case SLANG_STAGE_HULL: return mr::Shader::Stage::Hull; break;
-    case SLANG_STAGE_DOMAIN: return mr::Shader::Stage::Domain; break;
-    case SLANG_STAGE_GEOMETRY: return mr::Shader::Stage::Geometry; break;
-    case SLANG_STAGE_FRAGMENT: return mr::Shader::Stage::Fragment; break;
-    case SLANG_STAGE_COMPUTE: return mr::Shader::Stage::Compute; break;
-    case SLANG_STAGE_RAY_GENERATION: return mr::Shader::Stage::RayGeneration; break;
-    case SLANG_STAGE_INTERSECTION: return mr::Shader::Stage::Intersection; break;
-    case SLANG_STAGE_ANY_HIT: return mr::Shader::Stage::AnyHit; break;
-    case SLANG_STAGE_CLOSEST_HIT: return mr::Shader::Stage::ClosestHit; break;
-    case SLANG_STAGE_MISS: return mr::Shader::Stage::Miss; break;
-    case SLANG_STAGE_CALLABLE: return mr::Shader::Stage::Callable; break;
-    case SLANG_STAGE_MESH: return mr::Shader::Stage::Mesh; break;
-    case SLANG_STAGE_AMPLIFICATION: return mr::Shader::Stage::Amplification; break;
-    case SLANG_STAGE_DISPATCH: return mr::Shader::Stage::Dispatch; break;
+  case SLANG_STAGE_VERTEX:
+    return mr::Shader::Stage::Vertex;
+    break;
+  case SLANG_STAGE_HULL:
+    return mr::Shader::Stage::Hull;
+    break;
+  case SLANG_STAGE_DOMAIN:
+    return mr::Shader::Stage::Domain;
+    break;
+  case SLANG_STAGE_GEOMETRY:
+    return mr::Shader::Stage::Geometry;
+    break;
+  case SLANG_STAGE_FRAGMENT:
+    return mr::Shader::Stage::Fragment;
+    break;
+  case SLANG_STAGE_COMPUTE:
+    return mr::Shader::Stage::Compute;
+    break;
+  case SLANG_STAGE_RAY_GENERATION:
+    return mr::Shader::Stage::RayGeneration;
+    break;
+  case SLANG_STAGE_INTERSECTION:
+    return mr::Shader::Stage::Intersection;
+    break;
+  case SLANG_STAGE_ANY_HIT:
+    return mr::Shader::Stage::AnyHit;
+    break;
+  case SLANG_STAGE_CLOSEST_HIT:
+    return mr::Shader::Stage::ClosestHit;
+    break;
+  case SLANG_STAGE_MISS:
+    return mr::Shader::Stage::Miss;
+    break;
+  case SLANG_STAGE_CALLABLE:
+    return mr::Shader::Stage::Callable;
+    break;
+  case SLANG_STAGE_MESH:
+    return mr::Shader::Stage::Mesh;
+    break;
+  case SLANG_STAGE_AMPLIFICATION:
+    return mr::Shader::Stage::Amplification;
+    break;
+  case SLANG_STAGE_DISPATCH:
+    return mr::Shader::Stage::Dispatch;
+    break;
   }
   PANIC("Unhandled SlangStage");
   return {};
@@ -151,21 +187,15 @@ locate_entry_point(slang::IModule *module)
  * On success returns the composed component; otherwise returns diagnostics
  * blob via std::unexpected.
  */
-static std::expected<Slang::ComPtr<slang::IComponentType>,
-    Slang::ComPtr<slang::IBlob>>
-compose_components(
-    slang::ISession *session, slang::IModule *module, slang::IEntryPoint *entry)
+static std::expected<Slang::ComPtr<slang::IComponentType>, Slang::ComPtr<slang::IBlob>>
+compose_components(slang::ISession *session, slang::IModule *module, slang::IEntryPoint *entry)
 {
   Slang::ComPtr<slang::IBlob> blob;
   Slang::ComPtr<slang::IComponentType> composed;
-  std::array components{
-      (slang::IComponentType *)module, (slang::IComponentType *)entry};
+  std::array components{(slang::IComponentType *)module, (slang::IComponentType *)entry};
 
-  [[maybe_unused]] SlangResult res =
-      session->createCompositeComponentType(components.data(),
-          components.size(),
-          composed.writeRef(),
-          blob.writeRef());
+  [[maybe_unused]] SlangResult res = session->createCompositeComponentType(
+      components.data(), components.size(), composed.writeRef(), blob.writeRef());
 
   if (blob) {
     return std::unexpected(blob);
@@ -180,15 +210,13 @@ compose_components(
  * On success returns the linked component; otherwise returns diagnostics
  * blob via std::unexpected.
  */
-static std::expected<Slang::ComPtr<slang::IComponentType>,
-    Slang::ComPtr<slang::IBlob>>
+static std::expected<Slang::ComPtr<slang::IComponentType>, Slang::ComPtr<slang::IBlob>>
 link_program(slang::IComponentType *composed)
 {
   Slang::ComPtr<slang::IBlob> blob;
   Slang::ComPtr<slang::IComponentType> linked;
 
-  [[maybe_unused]] SlangResult res =
-      composed->link(linked.writeRef(), blob.writeRef());
+  [[maybe_unused]] SlangResult res = composed->link(linked.writeRef(), blob.writeRef());
 
   if (blob) {
     return std::unexpected(blob);
@@ -203,8 +231,8 @@ link_program(slang::IComponentType *composed)
  * On success returns a blob with compiled code; otherwise returns diagnostics
  * blob via std::unexpected.
  */
-static std::expected<Slang::ComPtr<slang::IBlob>, Slang::ComPtr<slang::IBlob>>
-get_target_code(slang::IComponentType *linked)
+static std::expected<Slang::ComPtr<slang::IBlob>, Slang::ComPtr<slang::IBlob>> get_target_code(
+    slang::IComponentType *linked)
 {
   Slang::ComPtr<slang::IBlob> blob;
   Slang::ComPtr<slang::IBlob> code;
@@ -250,8 +278,7 @@ std::optional<std::vector<Shader>> compile(const std::filesystem::path &path)
 
   std::vector<std::pair<Slang::ComPtr<slang::IComponentType>, mr::Shader::Stage>> composeds;
   for (const auto &entry_point : entry_points) {
-    if (auto res =
-            compose_components(session.get(), module.get(), entry_point.first.get());
+    if (auto res = compose_components(session.get(), module.get(), entry_point.first.get());
         res.has_value()) {
       composeds.emplace_back(std::move(res.value()), entry_point.second);
     }
