@@ -72,7 +72,7 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   {
     ZoneScopedN("meshopt_simplify");
 
-    if (!attributes.empty()) {
+    if (!attributes.empty() && !is_sparse) {
       result_indices.resize(
           meshopt_simplifyWithAttributes(result_indices.data(),
               original_indices.data(),
@@ -117,7 +117,7 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
     ZoneScopedN("meshopt_generateShadowIndexBufferMulti");
 
     result_shadow_indices.resize(result_indices.size());
-    if (!attributes.empty()) {
+    if (!attributes.empty() && !is_sparse) {
       meshopt_generateShadowIndexBufferMulti(result_shadow_indices.data(),
           result_indices.data(),
           result_indices.size(),
