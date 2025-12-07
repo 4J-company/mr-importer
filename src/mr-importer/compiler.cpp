@@ -86,56 +86,53 @@ static std::expected<Slang::ComPtr<slang::IModule>, Slang::ComPtr<slang::IBlob>>
   return module;
 }
 
-mr::Shader::Stage slang2importer(SlangStage stage)
+vk::ShaderStageFlagBits slang2importer(SlangStage stage)
 {
   switch (stage) {
   case SLANG_STAGE_VERTEX:
-    return mr::Shader::Stage::Vertex;
+    return vk::ShaderStageFlagBits::eVertex;
     break;
   case SLANG_STAGE_HULL:
-    return mr::Shader::Stage::Hull;
+    return vk::ShaderStageFlagBits::eTessellationControl;
     break;
   case SLANG_STAGE_DOMAIN:
-    return mr::Shader::Stage::Domain;
+    return vk::ShaderStageFlagBits::eTessellationEvaluation;
     break;
   case SLANG_STAGE_GEOMETRY:
-    return mr::Shader::Stage::Geometry;
+    return vk::ShaderStageFlagBits::eGeometry;
     break;
   case SLANG_STAGE_FRAGMENT:
-    return mr::Shader::Stage::Fragment;
+    return vk::ShaderStageFlagBits::eFragment;
     break;
   case SLANG_STAGE_COMPUTE:
-    return mr::Shader::Stage::Compute;
+    return vk::ShaderStageFlagBits::eCompute;
     break;
   case SLANG_STAGE_RAY_GENERATION:
-    return mr::Shader::Stage::RayGeneration;
+    return vk::ShaderStageFlagBits::eRaygenKHR;
     break;
   case SLANG_STAGE_INTERSECTION:
-    return mr::Shader::Stage::Intersection;
+    return vk::ShaderStageFlagBits::eIntersectionKHR;
     break;
   case SLANG_STAGE_ANY_HIT:
-    return mr::Shader::Stage::AnyHit;
+    return vk::ShaderStageFlagBits::eAnyHitKHR;
     break;
   case SLANG_STAGE_CLOSEST_HIT:
-    return mr::Shader::Stage::ClosestHit;
+    return vk::ShaderStageFlagBits::eClosestHitKHR;
     break;
   case SLANG_STAGE_MISS:
-    return mr::Shader::Stage::Miss;
+    return vk::ShaderStageFlagBits::eMissKHR;
     break;
   case SLANG_STAGE_CALLABLE:
-    return mr::Shader::Stage::Callable;
+    return vk::ShaderStageFlagBits::eCallableKHR;
     break;
   case SLANG_STAGE_MESH:
-    return mr::Shader::Stage::Mesh;
+    return vk::ShaderStageFlagBits::eMeshEXT;
     break;
   case SLANG_STAGE_AMPLIFICATION:
-    return mr::Shader::Stage::Amplification;
-    break;
-  case SLANG_STAGE_DISPATCH:
-    return mr::Shader::Stage::Dispatch;
+    return vk::ShaderStageFlagBits::eTaskEXT;
     break;
   }
-  PANIC("Unhandled SlangStage");
+  PANIC("Unhandled SlangStage", stage);
   return {};
 }
 
@@ -144,10 +141,10 @@ mr::Shader::Stage slang2importer(SlangStage stage)
  *
  * Returns the entry point if it exists, otherwise std::nullopt.
  */
-static std::optional<std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, mr::Shader::Stage>>>
+static std::optional<std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, vk::ShaderStageFlagBits>>>
 locate_entry_point(slang::IModule *module)
 {
-  std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, mr::Shader::Stage>> res_vec;
+  std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, vk::ShaderStageFlagBits>> res_vec;
 
   Slang::ComPtr<slang::IEntryPoint> res;
   Slang::ComPtr<slang::IBlob> blob;
@@ -267,7 +264,7 @@ std::optional<std::vector<Shader>> compile(const std::filesystem::path &path)
     return std::nullopt;
   }
 
-  std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, mr::Shader::Stage>> entry_points;
+  std::vector<std::pair<Slang::ComPtr<slang::IEntryPoint>, vk::ShaderStageFlagBits>> entry_points;
   if (auto res = locate_entry_point(module.get()); res.has_value()) {
     entry_points = std::move(res.value());
   }
@@ -276,7 +273,7 @@ std::optional<std::vector<Shader>> compile(const std::filesystem::path &path)
     return std::nullopt;
   }
 
-  std::vector<std::pair<Slang::ComPtr<slang::IComponentType>, mr::Shader::Stage>> composeds;
+  std::vector<std::pair<Slang::ComPtr<slang::IComponentType>, vk::ShaderStageFlagBits>> composeds;
   for (const auto &entry_point : entry_points) {
     if (auto res = compose_components(session.get(), module.get(), entry_point.first.get());
         res.has_value()) {
@@ -288,7 +285,7 @@ std::optional<std::vector<Shader>> compile(const std::filesystem::path &path)
     }
   }
 
-  std::vector<std::pair<Slang::ComPtr<slang::IComponentType>, mr::Shader::Stage>> linkeds;
+  std::vector<std::pair<Slang::ComPtr<slang::IComponentType>, vk::ShaderStageFlagBits>> linkeds;
   for (const auto &composed : composeds) {
     if (auto res = link_program(composed.first); res.has_value()) {
       linkeds.emplace_back(std::move(res.value()), composed.second);
