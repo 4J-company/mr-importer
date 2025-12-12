@@ -29,6 +29,7 @@
 #include <tbb/flow_graph.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_for_each.h>
+#include <tbb/parallel_invoke.h>
 
 #include <glm/detail/qualifier.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
