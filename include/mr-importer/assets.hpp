@@ -41,7 +41,9 @@ inline namespace importer {
   struct BoundingSphere {
     mr::Vec4f data {};
     mr::Vec3f center() const noexcept { return {data.x(), data.y(), data.z()}; }
+    void center(mr::Vec3f c) noexcept { data = {c.x(), c.y(), c.z(), data.w()}; }
     float radius() const noexcept { return data.w(); }
+    void radius(float r) noexcept { data = {data.x(), data.y(), data.z(), r}; }
   };
 
   struct PackedCone {
@@ -126,6 +128,7 @@ inline namespace importer {
     std::vector<Transform> transforms;
     std::string name;
     std::size_t material;
+    BoundingSphere bounding_sphere;
     AABB aabb;
 
     Mesh() noexcept = default;

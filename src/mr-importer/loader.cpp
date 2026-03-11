@@ -495,6 +495,20 @@ static std::optional<Mesh> get_mesh_from_primitive(
       }
       mesh.aabb.min = {min_pos[0], min_pos[1], max_pos[2]};
       mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
+
+      mr::Vec3f centroid {0, 0, 0};
+      for (const auto& pos : mesh.positions) {
+        centroid += {pos[0], pos[1], pos[2]};
+      }
+      centroid /= mesh.positions.size();
+
+      float radius = 0;
+      for (const auto& pos : mesh.positions) {
+        radius = std::max(radius, (mr::Vec3f(pos[0], pos[1], pos[2]) - centroid).length2());
+      }
+      radius = std::sqrt(radius);
+
+      mesh.bounding_sphere.data = {centroid.x(), centroid.y(), centroid.z(), radius};
     }
 
     // Set material
@@ -541,6 +555,20 @@ static std::optional<Mesh> get_mesh_from_primitive(
           }
           mesh.aabb.min = {min_pos[0], min_pos[1], min_pos[2]};
           mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
+
+          mr::Vec3f centroid {0, 0, 0};
+          for (const auto& pos : mesh.positions) {
+            centroid += {pos[0], pos[1], pos[2]};
+          }
+          centroid /= mesh.positions.size();
+
+          float radius = 0;
+          for (const auto& pos : mesh.positions) {
+            radius = std::max(radius, (mr::Vec3f(pos[0], pos[1], pos[2]) - centroid).length2());
+          }
+          radius = std::sqrt(radius);
+
+          mesh.bounding_sphere.data = {centroid.x(), centroid.y(), centroid.z(), radius};
         },
         [&]() {
           if (is_disabled(options, Options::LoadMeshAttributes)) {
