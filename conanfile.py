@@ -23,7 +23,7 @@ class mr_importerRecipe(ConanFile):
     def requirements(self):
         self.requires("spdlog/1.14.1", override=True)
 
-        self.requires("meshoptimizer/0.25")
+        self.requires("meshoptimizer/1.0")
         self.requires("fastgltf/0.9.0-4j")
 
         self.requires("ktx/4.3.2")
@@ -38,7 +38,7 @@ class mr_importerRecipe(ConanFile):
         self.requires("mr-math/[>1.1.4]")
         self.requires("mr-utils/1.1.2")
 
-        self.requires("tracy/0.12.2")
+        self.requires("tracy/0.13.1")
 
     def build_requirements(self):
         self.tool_requires("cmake/[>3.26]")
