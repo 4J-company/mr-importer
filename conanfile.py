@@ -33,6 +33,7 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("slang/2025.10.4")
 
+        self.requires("taskflow/4.0.0")
         self.requires("onetbb/2022.2.0")
 
         self.requires("mr-math/[>1.1.4]")

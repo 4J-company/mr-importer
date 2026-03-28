@@ -26,11 +26,10 @@ std::optional<Model> import(const std::filesystem::path &path, Options options)
   FlowGraph graph;
   graph.path = std::move(path);
 
-  add_loader_nodes(graph, options);
-  add_optimizer_nodes(graph, options);
-
-  graph.asset_loader->activate();
-  graph.graph.wait_for_all();
+  tf::Taskflow taskflow;
+  LoaderTasks loader = add_loader_nodes(taskflow, graph, options);
+  add_optimizer_nodes(taskflow, graph, options, loader.load_meshes);
+  taskflow_exec::import_executor().run(taskflow).wait();
 
   if (!graph.model) {
     return std::nullopt;

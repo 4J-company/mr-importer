@@ -436,30 +436,21 @@ Mesh optimize_data_layout(Mesh mesh)
 } // namespace
 
 /*
- * LOAD -> [SPLIT] --> [OPT₁ -> LOD₁ -> MESHLETS₁] --> JOIN -> NEXT
- *                  \-> [OPT₂ -> LOD₂ -> MESHLETS₂]---/
- *                   \-> [OPT₃ -> LOD₃ -> MESHLETS₃]-/
- *                  ... (Each mesh independently)
+ * load_meshes -> Subflow: OPT₁, OPT₂, ... (each mesh independently), then join.
  */
-void add_optimizer_nodes(FlowGraph &graph, const Options &options)
+void add_optimizer_nodes(
+    tf::Taskflow &tf, FlowGraph &graph, const Options &options, tf::Task after_meshes)
 {
-  graph.split_meshes =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, std::vector<size_t>>>(
-          graph.graph, 1, [&graph](fastgltf::Asset *asset) -> std::vector<size_t> {
-            if (asset == nullptr || !graph.model)
-              return {};
+  tf::Task optimize = tf.emplace([&graph, options](tf::Subflow &subflow) {
+    if (!graph.model) {
+      return;
+    }
 
-            std::vector<size_t> indices(graph.model->meshes.size());
-            std::iota(indices.begin(), indices.end(), 0);
-            return indices;
-          });
-
-  graph.mesh_index_broadcaster = std::make_unique<tbb::flow::broadcast_node<size_t>>(graph.graph);
-
-  graph.mesh_processor = std::make_unique<tbb::flow::function_node<size_t, size_t>>(
-      graph.graph, tbb::flow::unlimited, [&graph, &options](size_t mesh_idx) -> size_t {
+    const size_t n = graph.model->meshes.size();
+    for (size_t mesh_idx = 0; mesh_idx < n; ++mesh_idx) {
+      subflow.emplace([&graph, options, mesh_idx] {
         if (!graph.model) {
-          return mesh_idx;
+          return;
         }
 
         Mesh &mesh = graph.model->meshes[mesh_idx];
@@ -485,52 +476,11 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
           });
         }
         // clang-format on
-
-        return mesh_idx;
       });
+    }
+  });
 
-  // This collects all mesh indices and passes asset pointer forward
-  graph.meshes_join = std::make_unique<
-      tbb::flow::join_node<std::tuple<size_t, fastgltf::Asset *>, tbb::flow::queueing>>(
-      graph.graph);
-
-  graph.continue_after_meshes = std::make_unique<
-      tbb::flow::function_node<std::tuple<size_t, fastgltf::Asset *>, fastgltf::Asset *>>(
-      graph.graph,
-      1,
-      [&graph](const std::tuple<size_t, fastgltf::Asset *> &input) -> fastgltf::Asset * {
-        return std::get<1>(input);
-      });
-
-  // creates separate messages for each mesh to enable independent processing
-  graph.vector_splitter =
-      std::make_unique<tbb::flow::function_node<std::vector<size_t>, tbb::flow::continue_msg>>(
-          graph.graph, 1, [&graph](const std::vector<size_t> &indices) -> tbb::flow::continue_msg {
-            for (size_t idx : indices) {
-              graph.mesh_index_broadcaster->try_put(idx);
-            }
-            return {};
-          });
-
-  graph.asset_replicator =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
-          graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset *asset) -> fastgltf::Asset * {
-            if (graph.model) {
-              for (size_t i = 0; i < graph.model->meshes.size(); ++i) {
-              }
-            }
-            return asset;
-          });
-
-  // clang-format off
-  tbb::flow::make_edge(*graph.meshes_load, *graph.split_meshes);
-  tbb::flow::make_edge(*graph.split_meshes, *graph.vector_splitter);
-  tbb::flow::make_edge(*graph.mesh_index_broadcaster, *graph.mesh_processor);
-  tbb::flow::make_edge(*graph.mesh_processor, tbb::flow::input_port<0>(*graph.meshes_join));
-  tbb::flow::make_edge(*graph.meshes_load, *graph.asset_replicator);
-  tbb::flow::make_edge(*graph.asset_replicator, tbb::flow::input_port<1>(*graph.meshes_join));
-  tbb::flow::make_edge(*graph.meshes_join, *graph.continue_after_meshes);
-  // clang-format on
+  after_meshes.precede(optimize);
 }
 
 } // namespace importer

@@ -1568,61 +1568,53 @@ static Model::Lights get_lights_from_asset(fastgltf::Asset *asset)
 }
 } // namespace
 
-void add_loader_nodes(FlowGraph &graph, const Options &options)
+LoaderTasks add_loader_nodes(tf::Taskflow &tf, FlowGraph &graph, const Options &options)
 {
   ZoneScoped;
 
-  graph.asset_loader = std::make_unique<tbb::flow::input_node<fastgltf::Asset *>>(
-      graph.graph, [&graph](oneapi::tbb::flow_control &fc) -> fastgltf::Asset * {
-        if (graph.model) {
-          fc.stop();
-          return nullptr;
-        }
+  LoaderTasks tasks;
+  tasks.load_asset = tf.emplace([&graph]() {
+    if (graph.model) {
+      return;
+    }
 
-        ZoneScoped;
-        graph.asset = get_asset_from_path(graph.path);
-        if (!graph.asset) {
-          MR_ERROR("Failed to load asset from path: {}", graph.path.string());
-          fc.stop();
-          return nullptr;
-        }
+    ZoneScoped;
+    graph.asset = get_asset_from_path(graph.path);
+    if (!graph.asset) {
+      MR_ERROR("Failed to load asset from path: {}", graph.path.string());
+      return;
+    }
 
-        graph.model = std::make_unique<Model>();
+    graph.model = std::make_unique<Model>();
+  });
 
-        return &graph.asset.value();
-      });
+  tasks.load_meshes = tf.emplace([&graph, &options]() {
+    if (!graph.asset.has_value() || !graph.model) {
+      return;
+    }
+    ZoneScoped;
+    graph.model->meshes = get_meshes_from_asset(options, &graph.asset.value());
+  });
 
-  graph.meshes_load =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(graph.graph,
-          tbb::flow::unlimited,
-          [&graph, &options](fastgltf::Asset *asset) -> fastgltf::Asset * {
-            if (asset != nullptr) {
-              ZoneScoped;
-              graph.model->meshes = get_meshes_from_asset(options, asset);
-            }
-            return asset;
-          });
+  tf::Task materials = tf.emplace([&graph, &options]() {
+    if (!graph.asset.has_value() || !graph.model) {
+      return;
+    }
+    ZoneScoped;
+    graph.model->materials =
+        get_materials_from_asset(graph.path.parent_path(), &graph.asset.value(), options);
+  });
 
-  graph.materials_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(
-      graph.graph, tbb::flow::unlimited, [&graph, &options](fastgltf::Asset *asset) {
-        if (asset != nullptr) {
-          ZoneScoped;
-          graph.model->materials =
-              get_materials_from_asset(graph.path.parent_path(), &graph.asset.value(), options);
-        }
-      });
+  tf::Task lights = tf.emplace([&graph]() {
+    if (!graph.asset.has_value() || !graph.model) {
+      return;
+    }
+    ZoneScoped;
+    graph.model->lights = get_lights_from_asset(&graph.asset.value());
+  });
 
-  graph.lights_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(
-      graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset *asset) {
-        if (asset != nullptr) {
-          ZoneScoped;
-          graph.model->lights = get_lights_from_asset(asset);
-        }
-      });
-
-  tbb::flow::make_edge(*graph.asset_loader, *graph.meshes_load);
-  tbb::flow::make_edge(*graph.asset_loader, *graph.materials_load);
-  tbb::flow::make_edge(*graph.asset_loader, *graph.lights_load);
+  tasks.load_asset.precede(tasks.load_meshes, materials, lights);
+  return tasks;
 }
 
 /**
@@ -1634,10 +1626,9 @@ std::optional<Model> load(std::filesystem::path path, Options options)
   FlowGraph graph;
   graph.path = std::move(path);
 
-  add_loader_nodes(graph, options);
-
-  graph.asset_loader->activate();
-  graph.graph.wait_for_all();
+  tf::Taskflow taskflow;
+  add_loader_nodes(taskflow, graph, options);
+  taskflow_exec::import_executor().run(taskflow).wait();
 
   return graph.model.get() == nullptr ? std::nullopt : std::optional(std::move(*graph.model));
 }

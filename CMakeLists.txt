@@ -6,7 +6,7 @@ set(MR_IMPORTER_LIB_NAME mr-importer-lib)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(MR_IMPORTER_BUILD_TESTS    "Whether tests are built" OFF)
-option(MR_IMPORTER_BUILD_EXAMPLES "Whether examples are built" OFF)
+option(MR_IMPORTER_BUILD_EXAMPLES "Whether examples are built" ON)
 
 project(
   ${MR_IMPORTER_PROJECT_NAME}
@@ -27,6 +27,7 @@ add_library(${MR_IMPORTER_LIB_NAME}
     include/mr-importer/serializer.hpp
 
     src/mr-importer/assets.cpp
+    src/mr-importer/import_executor.cpp
     src/mr-importer/importer.cpp
     src/mr-importer/loader.cpp
     src/mr-importer/optimizer.cpp

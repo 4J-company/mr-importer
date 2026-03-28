@@ -22,6 +22,7 @@ set(MR_IMPORTER_PUBLIC_DEPS
 find_package(meshoptimizer REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(slang REQUIRED)
+find_package(Taskflow REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Ktx REQUIRED)
 find_package(Tracy REQUIRED)
@@ -43,6 +44,7 @@ set(MR_IMPORTER_PRIVATE_DEPS
   fastgltf::fastgltf
   slang::slang
   TBB::tbb
+  Taskflow::Taskflow
   KTX::ktx
   draco::draco
   dds_image
