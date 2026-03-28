@@ -279,6 +279,75 @@ static bool get_attribute_for_all_points(fastgltf::ComponentType component_type,
   return decode_result;
 }
 
+// Compute bounding sphere using Ritter's algorithm
+static BoundingSphere calculate_bounding_sphere(const PositionArray &positions)
+{
+  ZoneScoped;
+
+  if (positions.empty()) {
+    return {mr::Vec3f(0, 0, 0), 0.0f};
+  }
+
+  if (positions.size() == 1) {
+    return BoundingSphere(mr::Vec3f(positions[0][0], positions[0][1], positions[0][2]), 0.0f);
+  }
+
+  // Step 1: Find two most distant points to get initial sphere
+  mr::Vec3f p1(positions[0][0], positions[0][1], positions[0][2]);
+
+  // Find point farthest from p1 - this is forever on sphere bounds
+  mr::Vec3f p2 = p1;
+  float max_dist_sq = 0.0f;
+  for (const auto &pos : positions) {
+    mr::Vec3f p(pos[0], pos[1], pos[2]);
+    float dist_sq = (p - p1).length2();
+    if (dist_sq > max_dist_sq) {
+      max_dist_sq = dist_sq;
+      p2 = p;
+    }
+  }
+
+  // Find point farthest from p2 - this is also on sphere bounds, distance will be diameters
+  p1 = p2;
+  max_dist_sq = 0.0f;
+  for (const auto &pos : positions) {
+    mr::Vec3f p(pos[0], pos[1], pos[2]);
+    float dist_sq = (p - p2).length2();
+    if (dist_sq > max_dist_sq) {
+      max_dist_sq = dist_sq;
+      p1 = p;
+    }
+  }
+
+  // Initial sphere from two most distant points
+  mr::Vec3f center = (p1 + p2) * 0.5f;
+  float radius = (p1 - p2).length() * 0.5f;
+
+  float r2 = std::pow(radius, 2);
+  constexpr float eps = 1e-6f;
+  // Step 2: Iteratively expand sphere to include all points
+  for (const auto &pos : positions) {
+    mr::Vec3f point(pos[0], pos[1], pos[2]);
+    mr::Vec3f diff = point - center;
+    float dist2 = diff.length2();
+
+    if (dist2 > r2 + eps) {  // Point is outside (with small epsilon)
+      // Expand sphere to include this point
+      // New radius is midpoint between old radius and distance to point
+      float dist = std::sqrt(dist2);
+      float new_radius = (radius + dist) * 0.5f;
+
+      // Move center along direction to point
+      float alpha = (new_radius - radius) / dist;
+      center = center + diff * alpha;
+      radius = new_radius;
+      r2 = std::pow(radius, 2);
+    }
+  }
+
+  return BoundingSphere(center, radius);
+}
+
 static size_t byte_size(fastgltf::ComponentType component_type)
 {
   switch (component_type) {
@@ -482,34 +551,26 @@ static std::optional<Mesh> get_mesh_from_primitive(
         IndexSpan() // empty shadow indices
     );
 
-    if (!mesh.positions.empty()) {
-      auto min_pos = mesh.positions[0];
-      auto max_pos = mesh.positions[0];
-      for (const auto &pos : mesh.positions) {
-        min_pos[0] = std::min(min_pos[0], pos[0]);
-        min_pos[1] = std::min(min_pos[1], pos[1]);
-        min_pos[2] = std::min(min_pos[2], pos[2]);
-        max_pos[0] = std::max(max_pos[0], pos[0]);
-        max_pos[1] = std::max(max_pos[1], pos[1]);
-        max_pos[2] = std::max(max_pos[2], pos[2]);
+    tbb::parallel_invoke(
+    [&]() {
+      if (!mesh.positions.empty()) {
+        auto min_pos = mesh.positions[0];
+        auto max_pos = mesh.positions[0];
+        for (const auto &pos : mesh.positions) {
+          min_pos[0] = std::min(min_pos[0], pos[0]);
+          min_pos[1] = std::min(min_pos[1], pos[1]);
+          min_pos[2] = std::min(min_pos[2], pos[2]);
+          max_pos[0] = std::max(max_pos[0], pos[0]);
+          max_pos[1] = std::max(max_pos[1], pos[1]);
+          max_pos[2] = std::max(max_pos[2], pos[2]);
+        }
+        mesh.aabb.min = {min_pos[0], min_pos[1], min_pos[2]};
+        mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
       }
-      mesh.aabb.min = {min_pos[0], min_pos[1], max_pos[2]};
-      mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
-
-      mr::Vec3f centroid {0, 0, 0};
-      for (const auto& pos : mesh.positions) {
-        centroid += {pos[0], pos[1], pos[2]};
-      }
-      centroid /= mesh.positions.size();
-
-      float radius = 0;
-      for (const auto& pos : mesh.positions) {
-        radius = std::max(radius, (mr::Vec3f(pos[0], pos[1], pos[2]) - centroid).length2());
-      }
-      radius = std::sqrt(radius);
-
-      mesh.bounding_sphere.data = {centroid.x(), centroid.y(), centroid.z(), radius};
-    }
+    },
+    [&]() {
+      mesh.bounding_sphere = calculate_bounding_sphere(mesh.positions);
+    });
 
     // Set material
     if (primitive.materialIndex) {
@@ -543,32 +604,26 @@ static std::optional<Mesh> get_mesh_from_primitive(
           fastgltf::iterateAccessor<glm::vec3>(asset, positions.value().accessor, [&](glm::vec3 v) {
             mesh.positions.push_back({v.x, v.y, v.z});
           });
-          auto min_pos = mesh.positions[0];
-          auto max_pos = mesh.positions[0];
-          for (const auto &pos : mesh.positions) {
-            min_pos[0] = std::min(min_pos[0], pos[0]);
-            min_pos[1] = std::min(min_pos[1], pos[1]);
-            min_pos[2] = std::min(min_pos[2], pos[2]);
-            max_pos[0] = std::max(max_pos[0], pos[0]);
-            max_pos[1] = std::max(max_pos[1], pos[1]);
-            max_pos[2] = std::max(max_pos[2], pos[2]);
-          }
-          mesh.aabb.min = {min_pos[0], min_pos[1], min_pos[2]};
-          mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
 
-          mr::Vec3f centroid {0, 0, 0};
-          for (const auto& pos : mesh.positions) {
-            centroid += {pos[0], pos[1], pos[2]};
-          }
-          centroid /= mesh.positions.size();
-
-          float radius = 0;
-          for (const auto& pos : mesh.positions) {
-            radius = std::max(radius, (mr::Vec3f(pos[0], pos[1], pos[2]) - centroid).length2());
-          }
-          radius = std::sqrt(radius);
-
-          mesh.bounding_sphere.data = {centroid.x(), centroid.y(), centroid.z(), radius};
+          // Calculate bounds
+          tbb::parallel_invoke(
+          [&]() {
+            auto min_pos = mesh.positions[0];
+            auto max_pos = mesh.positions[0];
+            for (const auto &pos : mesh.positions) {
+              min_pos[0] = std::min(min_pos[0], pos[0]);
+              min_pos[1] = std::min(min_pos[1], pos[1]);
+              min_pos[2] = std::min(min_pos[2], pos[2]);
+              max_pos[0] = std::max(max_pos[0], pos[0]);
+              max_pos[1] = std::max(max_pos[1], pos[1]);
+              max_pos[2] = std::max(max_pos[2], pos[2]);
+            }
+            mesh.aabb.min = {min_pos[0], min_pos[1], min_pos[2]};
+            mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
+          },
+          [&]() {
+            mesh.bounding_sphere = calculate_bounding_sphere(mesh.positions);
+          });
         },
         [&]() {
           if (is_disabled(options, Options::LoadMeshAttributes)) {
