@@ -15,6 +15,9 @@ int main(int argc, char **argv) {
   bool generate_and_render_meshlets = argc < 4 ? true : std::atoi(argv[3]);
 
   mr::Options options = mr::Options::All;
+  if (lodnumber == 0) {
+    mr::disable(options, mr::Options::GenerateDiscreteLODs);
+  }
   if (!generate_and_render_meshlets) {
     mr::disable(options, mr::Options::GenerateMeshlets);
   }
