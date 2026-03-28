@@ -44,6 +44,9 @@ inline namespace importer {
     void center(mr::Vec3f c) noexcept { data = {c.x(), c.y(), c.z(), data.w()}; }
     float radius() const noexcept { return data.w(); }
     void radius(float r) noexcept { data = {data.x(), data.y(), data.z(), r}; }
+
+    BoundingSphere(mr::Vec3f center, float radius) : data(center.x(), center.y(), center.z(), radius) {}
+    BoundingSphere() = default;
   };
 
   struct PackedCone {
