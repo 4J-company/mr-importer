@@ -444,9 +444,9 @@ Mesh optimize_data_layout(Mesh mesh)
 void add_optimizer_nodes(FlowGraph &graph, const Options &options)
 {
   graph.split_meshes =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, std::vector<size_t>>>(
-          graph.graph, 1, [&graph](fastgltf::Asset *asset) -> std::vector<size_t> {
-            if (asset == nullptr || !graph.model)
+      std::make_unique<tbb::flow::function_node<void *, std::vector<size_t>>>(
+          graph.graph, 1, [&graph](void *token) -> std::vector<size_t> {
+            if (token == nullptr || !graph.model)
               return {};
 
             std::vector<size_t> indices(graph.model->meshes.size());
@@ -489,16 +489,16 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
         return mesh_idx;
       });
 
-  // This collects all mesh indices and passes asset pointer forward
+  // This collects all mesh indices and passes the pipeline token forward
   graph.meshes_join = std::make_unique<
-      tbb::flow::join_node<std::tuple<size_t, fastgltf::Asset *>, tbb::flow::queueing>>(
+      tbb::flow::join_node<std::tuple<size_t, void *>, tbb::flow::queueing>>(
       graph.graph);
 
   graph.continue_after_meshes = std::make_unique<
-      tbb::flow::function_node<std::tuple<size_t, fastgltf::Asset *>, fastgltf::Asset *>>(
+      tbb::flow::function_node<std::tuple<size_t, void *>, void *>>(
       graph.graph,
       1,
-      [&graph](const std::tuple<size_t, fastgltf::Asset *> &input) -> fastgltf::Asset * {
+      [&graph](const std::tuple<size_t, void *> &input) -> void * {
         return std::get<1>(input);
       });
 
@@ -513,13 +513,13 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
           });
 
   graph.asset_replicator =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
-          graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset *asset) -> fastgltf::Asset * {
+      std::make_unique<tbb::flow::function_node<void *, void *>>(
+          graph.graph, tbb::flow::unlimited, [&graph](void *token) -> void * {
             if (graph.model) {
               for (size_t i = 0; i < graph.model->meshes.size(); ++i) {
               }
             }
-            return asset;
+            return token;
           });
 
   // clang-format off

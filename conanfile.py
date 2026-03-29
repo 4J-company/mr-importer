@@ -18,7 +18,14 @@ class mr_importerRecipe(ConanFile):
     options = {"shared": [True, False]}
     default_options = {"shared": False}
 
-    exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake", "tests/main.cpp", "examples/*"
+    exports_sources = (
+        "CMakeLists.txt",
+        "src/*",
+        "include/*",
+        "cmake/deps.cmake",
+        "tests/*",
+        "examples/*",
+    )
 
     def requirements(self):
         self.requires("spdlog/1.14.1", override=True)

@@ -27,6 +27,15 @@ find_package(Ktx REQUIRED)
 find_package(Tracy REQUIRED)
 find_package(draco REQUIRED)
 find_package(pxr REQUIRED)
+find_package(OpenSubdiv REQUIRED)
+
+# OpenUSD discovers file formats (Sdf, Ar, …) via PlugRegistry. Static Conan
+# packages need an explicit plugin root (…/lib/usd); see usd_loader.cpp.
+if(DEFINED openusd_PACKAGE_FOLDER_RELEASE)
+  set(MR_IMPORTER_PXR_USD_PLUGIN_ROOT "${openusd_PACKAGE_FOLDER_RELEASE}/lib/usd")
+elseif(DEFINED openusd_PACKAGE_FOLDER_DEBUG)
+  set(MR_IMPORTER_PXR_USD_PLUGIN_ROOT "${openusd_PACKAGE_FOLDER_DEBUG}/lib/usd")
+endif()
 CPMAddPackage("gh:spnda/dds_image#main")
 CPMAddPackage(
   NAME wuffs
@@ -47,6 +56,7 @@ set(MR_IMPORTER_PRIVATE_DEPS
   KTX::ktx
   draco::draco
   openusd::openusd
+  OpenSubdiv::osdgpu_static
   dds_image
   wuffs
   Tracy::TracyClient

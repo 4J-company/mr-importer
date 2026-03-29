@@ -13,6 +13,11 @@
 
 #include <draco/compression/decode.h>
 
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <iterator>
+
 #include "mr-importer/importer.hpp"
 
 #include "pch.hpp"
@@ -1565,14 +1570,200 @@ static Model::Lights get_lights_from_asset(fastgltf::Asset *asset)
 
   return lights;
 }
-} // namespace
 
-void add_loader_nodes(FlowGraph &graph, const Options &options)
+/**
+ * Decode an image from a filesystem path (PNG/JPEG via WUFFS, DDS, KTX2).
+ * Shared by the USD texture path and kept alongside glTF decode logic.
+ */
+static std::optional<ImageData> decode_image_from_file_path_impl(
+    const std::filesystem::path &path, Options options)
 {
   ZoneScoped;
 
-  graph.asset_loader = std::make_unique<tbb::flow::input_node<fastgltf::Asset *>>(
-      graph.graph, [&graph](oneapi::tbb::flow_control &fc) -> fastgltf::Asset * {
+  std::string ext = path.extension().string();
+  std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  ImageData new_image{};
+
+  auto load_dds_from_file_path = [](const std::string &p, ImageData &img) -> bool {
+    ZoneScopedN("DDS import from file");
+    dds::Image dds_image;
+    dds::ReadResult res = dds::readFile(p, &dds_image);
+    if (res != dds::ReadResult::Success)
+      return false;
+    if (dds_image.data.get() == nullptr)
+      return false;
+    if (dds::getBitsPerPixel(dds_image.format) % 8 != 0)
+      return false;
+    img.width = dds_image.width;
+    img.height = dds_image.height;
+    img.depth = dds_image.arraySize;
+    img.format = (vk::Format)dds::getVulkanFormat(dds_image.format, dds_image.supportsAlpha);
+    img.bytes_per_pixel = dds::getBitsPerPixel(dds_image.format) / 8;
+    img.pixels.reset((std::byte *)dds_image.data.release());
+    img.pixels.size(img.bytes_per_pixel * img.width * img.height);
+    int size = 0;
+    for (auto &mip : dds_image.mipmaps) {
+      size += static_cast<int>(mip.size_bytes());
+      img.mips.emplace_back(std::as_bytes(mip));
+    }
+    img.pixels.size(size);
+    return img.width > 0 && img.height > 0 && img.bytes_per_pixel > 0;
+  };
+
+  auto load_ktx2_from_file_path = [](const std::string &p, ImageData &img) -> bool {
+    ZoneScopedN("KTX import from file");
+    ktxTexture2 *tex;
+    KTX_error_code result = ktxTexture_CreateFromNamedFile(
+        p.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, (ktxTexture **)&tex);
+    std::unique_ptr<ktxTexture2, void (*)(ktxTexture2 *)> ktx_texture{
+        tex, +[](ktxTexture2 *ptr) { ktxTexture_Destroy((ktxTexture *)ptr); }};
+    if (result != KTX_SUCCESS)
+      return false;
+    if (ktxTexture2_NeedsTranscoding(ktx_texture.get())) {
+      result = ktxTexture2_TranscodeBasis(ktx_texture.get(), KTX_TTF_BC7_RGBA, 0);
+      if (result != KTX_SUCCESS)
+        return false;
+    }
+    img.height = ktx_texture->baseHeight;
+    img.width = ktx_texture->baseWidth;
+    img.depth = ktx_texture->baseDepth;
+    img.format = (vk::Format)ktxTexture2_GetVkFormat(ktx_texture.get());
+    img.bytes_per_pixel = format_byte_size(img.format);
+    img.pixels = std::make_unique_for_overwrite<std::byte[]>(ktx_texture->dataSize);
+    img.pixels.size(ktx_texture->dataSize);
+    std::memcpy(img.pixels.get(), ktx_texture->pData, ktx_texture->dataSize);
+    for (uint32_t mip_index = 0; mip_index < ktx_texture->numLevels; mip_index++) {
+      uint32_t copy_width = img.width >> mip_index;
+      uint32_t copy_height = img.height >> mip_index;
+      ktx_size_t copy_buffer_offset = 0;
+      result = ktxTexture_GetImageOffset(
+          (ktxTexture *)ktx_texture.get(), mip_index, 0, 0, &copy_buffer_offset);
+      if (result != KTX_SUCCESS)
+        continue;
+      img.mips.emplace_back(
+          img.pixels.get() + copy_buffer_offset, copy_width * copy_height * img.bytes_per_pixel);
+    }
+    return true;
+  };
+
+  auto try_wuffs_file = [](const std::string &p, ImageData &img) -> bool {
+    ZoneScopedN("WUFFS import from file");
+    std::unique_ptr<FILE, int (*)(FILE *)> file(fopen(p.c_str(), "rb"), fclose);
+    if (file.get() == nullptr) {
+      MR_INFO("Failed to open image file {}", p.c_str());
+      return false;
+    }
+    wuffs_aux::DecodeImageCallbacks callbacks;
+    wuffs_aux::sync_io::FileInput input(file.get());
+    wuffs_aux::DecodeImageResult result = wuffs_aux::DecodeImage(callbacks, input);
+    if (!result.error_message.empty()) {
+      MR_INFO("Failed to parse image: {}", result.error_message);
+      return false;
+    }
+    if (!result.pixbuf.pixcfg.is_valid())
+      return false;
+    wuffs_base__table_u8 tab = result.pixbuf.plane(0);
+    wuffs_base__pixel_format format = result.pixbuf.pixel_format();
+    if (format.bits_per_pixel() % 8 != 0)
+      return false;
+    img.bytes_per_pixel = format.bits_per_pixel() / 8;
+    img.width = tab.width / img.bytes_per_pixel;
+    img.height = tab.height;
+    if (img.width <= 0 || img.height <= 0 || img.bytes_per_pixel <= 0)
+      return false;
+    img.pixels.reset((std::byte *)result.pixbuf_mem_owner.release());
+    img.pixels.size(img.width * img.height * img.bytes_per_pixel);
+    img.mips.emplace_back(img.pixels.get(), img.pixels.size());
+    return true;
+  };
+
+  const std::string path_str = path.string();
+  if (ext == ".dds") {
+    if (load_dds_from_file_path(path_str, new_image))
+      goto format_fixup;
+  }
+  if (ext == ".ktx2") {
+    if (load_ktx2_from_file_path(path_str, new_image))
+      goto format_fixup;
+  }
+  if (try_wuffs_file(path_str, new_image))
+    goto format_fixup;
+  if (load_dds_from_file_path(path_str, new_image))
+    goto format_fixup;
+  if (load_ktx2_from_file_path(path_str, new_image))
+    goto format_fixup;
+
+  return std::nullopt;
+
+format_fixup:
+  if (new_image.format == vk::Format()) {
+    switch (new_image.bytes_per_pixel) {
+    case 1:
+      if (!(options & Options::Allow1ComponentImages)) {
+        MR_INFO("Resizing an image from 1-component to 2-component. Consider "
+                "doing it offline");
+        resize_image(new_image, 1, 1, 2);
+      }
+      else {
+        new_image.format = vk::Format::eR8Srgb;
+        break;
+      }
+    case 2:
+      if (!(options & Options::Allow2ComponentImages)) {
+        MR_INFO("Resizing an image from 2-component to 3-component. Consider "
+                "doing it offline");
+        resize_image(new_image, 2, 1, 3);
+      }
+      else {
+        new_image.format = vk::Format::eR8G8Srgb;
+        break;
+      }
+    case 3:
+      if (!(options & Options::Allow3ComponentImages)) {
+        MR_INFO("Resizing an image from 3-component to 4-component. Consider "
+                "doing it offline");
+        resize_image(new_image, 3, 1, 4);
+      }
+      else {
+        new_image.format = vk::Format::eB8G8R8Srgb;
+        break;
+      }
+    case 4:
+      if (!(options & Options::Allow4ComponentImages)) {
+        MR_ERROR("Disallowing 4-component images makes lossless import impossible. "
+                 "Transfer your images to 3-components (or less) offline!");
+      }
+      else {
+        new_image.format = vk::Format::eB8G8R8A8Srgb;
+        break;
+      }
+    default:
+      PANIC("Failed to determine number of image components", new_image.bytes_per_pixel, options);
+      break;
+    }
+  }
+
+  if (new_image.pixels.get() == nullptr)
+    return std::nullopt;
+  return new_image;
+}
+} // namespace
+
+std::optional<ImageData> load_image_from_file_path(
+    const std::filesystem::path &path, Options options)
+{
+  return decode_image_from_file_path_impl(path, options);
+}
+
+void add_gltf_loader_nodes(FlowGraph &graph, const Options &options)
+{
+  ZoneScoped;
+
+  graph.asset_loader = std::make_unique<tbb::flow::input_node<void *>>(
+      graph.graph, [&graph](oneapi::tbb::flow_control &fc) -> void * {
         if (graph.model) {
           fc.stop();
           return nullptr;
@@ -1588,34 +1779,36 @@ void add_loader_nodes(FlowGraph &graph, const Options &options)
 
         graph.model = std::make_unique<Model>();
 
-        return &graph.asset.value();
+        return static_cast<void *>(&graph.asset.value());
       });
 
   graph.meshes_load =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(graph.graph,
+      std::make_unique<tbb::flow::function_node<void *, void *>>(graph.graph,
           tbb::flow::unlimited,
-          [&graph, &options](fastgltf::Asset *asset) -> fastgltf::Asset * {
-            if (asset != nullptr) {
+          [&graph, &options](void *token) -> void * {
+            if (token != nullptr) {
               ZoneScoped;
-              graph.model->meshes = get_meshes_from_asset(options, asset);
+              graph.model->meshes =
+                  get_meshes_from_asset(options, static_cast<fastgltf::Asset *>(token));
             }
-            return asset;
+            return token;
           });
 
-  graph.materials_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(
-      graph.graph, tbb::flow::unlimited, [&graph, &options](fastgltf::Asset *asset) {
-        if (asset != nullptr) {
+  graph.materials_load = std::make_unique<tbb::flow::function_node<void *>>(
+      graph.graph, tbb::flow::unlimited, [&graph, &options](void *token) {
+        if (token != nullptr) {
           ZoneScoped;
-          graph.model->materials =
-              get_materials_from_asset(graph.path.parent_path(), &graph.asset.value(), options);
+          graph.model->materials = get_materials_from_asset(graph.path.parent_path(),
+              static_cast<fastgltf::Asset *>(token),
+              options);
         }
       });
 
-  graph.lights_load = std::make_unique<tbb::flow::function_node<fastgltf::Asset *>>(
-      graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset *asset) {
-        if (asset != nullptr) {
+  graph.lights_load = std::make_unique<tbb::flow::function_node<void *>>(
+      graph.graph, tbb::flow::unlimited, [&graph](void *token) {
+        if (token != nullptr) {
           ZoneScoped;
-          graph.model->lights = get_lights_from_asset(asset);
+          graph.model->lights = get_lights_from_asset(static_cast<fastgltf::Asset *>(token));
         }
       });
 
@@ -1633,7 +1826,7 @@ std::optional<Model> load(std::filesystem::path path, Options options)
   FlowGraph graph;
   graph.path = std::move(path);
 
-  add_loader_nodes(graph, options);
+  add_gltf_loader_nodes(graph, options);
 
   graph.asset_loader->activate();
   graph.graph.wait_for_all();
