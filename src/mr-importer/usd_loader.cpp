@@ -1,6 +1,16 @@
 /**
  * \file usd_loader.cpp
  * \brief OpenUSD import into runtime asset structures.
+ *
+ * Pipeline overview, conventions (row vs column matrices, up-axis, payloads), and
+ * troubleshooting: see repository file \c docs/USD_LOADER.md.
+ *
+ * Summary: open stage with an asset resolver context; load all payloads; traverse with
+ * instance proxies; apply stage up-axis as \c world * upCorr (USD row vectors); convert
+ * \c GfMatrix4d to \c Transform via transpose for column-vector APIs; extract
+ * \c UsdGeomMesh (with guide-purpose filtering), \c UsdPreviewSurface materials,
+ * \c UsdLux lights, and \c UsdGeomCamera. Registered from \c add_usd_loader_nodes()
+ * on the import flow graph.
  */
 
 #include "mr-importer/importer.hpp"
@@ -66,12 +76,9 @@ static void push_unique_path(std::vector<std::string> &paths, std::string const 
   if (p.empty()) {
     return;
   }
-  for (std::string const &x : paths) {
-    if (x == p) {
-      return;
-    }
+  if (std::find(paths.begin(), paths.end(), p) == paths.end()) {
+    paths.push_back(p);
   }
-  paths.push_back(p);
 }
 
 static void append_usd_plugin_root(std::vector<std::string> &paths, std::filesystem::path const &root)
@@ -159,7 +166,9 @@ static GfMatrix4d stage_up_axis_correction(UsdStageRefPtr const &stage)
 {
   TfToken up = UsdGeomGetStageUpAxis(stage);
   if (up == UsdGeomTokens->z) {
-    return GfMatrix4d().SetRotate(GfRotation(GfVec3d(1, 0, 0), 90.0));
+    // Z-up stage: map +Z to +Y for Y-up viewers. +90° about +X maps +Z → −Y (inverted);
+    // use minimal rotation from stage up into +Y (equivalent to −90° about +X here).
+    return GfMatrix4d().SetRotate(GfRotation(GfVec3d(0, 0, 1), GfVec3d(0, 1, 0)));
   }
   return GfMatrix4d(1.0);
 }
@@ -172,33 +181,12 @@ static void triangulate_faces_from_counts(int const *face_vertex_counts,
   out.clear();
   int idx = 0;
   for (size_t fi = 0; fi < nfaces; ++fi) {
-    int n = face_vertex_counts[fi];
+    int const n = face_vertex_counts[fi];
     if (n < 3) {
       idx += n;
       continue;
     }
-    int base = idx;
-    if (n == 3) {
-      out.push_back(static_cast<Index>(face_vertex_indices[idx]));
-      out.push_back(static_cast<Index>(face_vertex_indices[idx + 1]));
-      out.push_back(static_cast<Index>(face_vertex_indices[idx + 2]));
-      idx += 3;
-      continue;
-    }
-    if (n == 4) {
-      Index i0 = static_cast<Index>(face_vertex_indices[base]);
-      Index i1 = static_cast<Index>(face_vertex_indices[base + 1]);
-      Index i2 = static_cast<Index>(face_vertex_indices[base + 2]);
-      Index i3 = static_cast<Index>(face_vertex_indices[base + 3]);
-      out.push_back(i0);
-      out.push_back(i1);
-      out.push_back(i2);
-      out.push_back(i0);
-      out.push_back(i2);
-      out.push_back(i3);
-      idx += 4;
-      continue;
-    }
+    int const base = idx;
     for (int t = 1; t < n - 1; ++t) {
       out.push_back(static_cast<Index>(face_vertex_indices[base]));
       out.push_back(static_cast<Index>(face_vertex_indices[base + t]));
@@ -208,14 +196,22 @@ static void triangulate_faces_from_counts(int const *face_vertex_counts,
   }
 }
 
-static Color gf_vec_to_color(GfVec3f const &v)
-{
-  return Color(v[0], v[1], v[2], 1.f);
-}
-
 static float lux_effective_intensity(float intensity, float exposure)
 {
   return intensity * std::pow(2.0f, exposure);
+}
+
+static void read_usd_lux_color_and_effective_intensity(
+    UsdPrim const &prim, GfVec3f &color, float &effective_intensity)
+{
+  UsdLuxLightAPI const light(prim);
+  color = GfVec3f(1, 1, 1);
+  light.GetColorAttr().Get(&color);
+  float intensity = 1.f;
+  light.GetIntensityAttr().Get(&intensity);
+  float exposure = 0.f;
+  light.GetExposureAttr().Get(&exposure);
+  effective_intensity = lux_effective_intensity(intensity, exposure);
 }
 
 static std::optional<TextureData> try_load_uv_texture(
@@ -270,14 +266,11 @@ static void append_texture_from_input(UsdShadeShader const &preview,
   UsdPrim p = source.GetPrim();
   UsdShadeShader srcShader(p);
   TfToken id;
-  if (!srcShader.GetIdAttr().Get(&id)) {
+  if (!srcShader.GetIdAttr().Get(&id) || id != TfToken("UsdUVTexture")) {
     return;
   }
-  if (id == TfToken("UsdUVTexture")) {
-    auto tex = try_load_uv_texture(srcShader, type, stage_dir, options);
-    if (tex.has_value()) {
-      out.emplace_back(std::move(tex.value()));
-    }
+  if (auto tex = try_load_uv_texture(srcShader, type, stage_dir, options)) {
+    out.emplace_back(std::move(*tex));
   }
 }
 
@@ -293,7 +286,6 @@ static MaterialData build_material_from_preview(
   m.constants.metallic_factor = 0.f;
 
   GfVec3f v3;
-  GfVec4f v4;
   if (preview.GetInput(TfToken("diffuseColor")).GetAttr().Get(&v3)) {
     m.constants.base_color_factor = Color(v3[0], v3[1], v3[2], 1.f);
   }
@@ -309,49 +301,50 @@ static MaterialData build_material_from_preview(
   }
 
   if (is_enabled(options, Options::LoadMaterials)) {
-    append_texture_from_input(
-        preview, TfToken("diffuseColor"), TextureType::BaseColor, stage_dir, options, m.textures);
-    append_texture_from_input(
-        preview, TfToken("normal"), TextureType::NormalMap, stage_dir, options, m.textures);
-    append_texture_from_input(preview,
-        TfToken("metallic"),
-        TextureType::RoughnessMetallic,
-        stage_dir,
-        options,
-        m.textures);
-    append_texture_from_input(preview,
-        TfToken("roughness"),
-        TextureType::RoughnessMetallic,
-        stage_dir,
-        options,
-        m.textures);
-    append_texture_from_input(
-        preview, TfToken("emissiveColor"), TextureType::EmissiveColor, stage_dir, options, m.textures);
+    struct TexIn {
+      char const *input_name;
+      TextureType type;
+    };
+    static TexIn const kPreviewTextureInputs[] = {
+        {"diffuseColor", TextureType::BaseColor},
+        {"normal", TextureType::NormalMap},
+        {"metallic", TextureType::RoughnessMetallic},
+        {"roughness", TextureType::RoughnessMetallic},
+        {"emissiveColor", TextureType::EmissiveColor},
+    };
+    for (auto const &ti : kPreviewTextureInputs) {
+      append_texture_from_input(
+          preview, TfToken(ti.input_name), ti.type, stage_dir, options, m.textures);
+    }
   }
 
   return m;
+}
+
+static std::optional<UsdShadeShader> as_preview_shader_if(UsdShadeShader const &sh)
+{
+  if (!sh.GetPrim().IsValid()) {
+    return std::nullopt;
+  }
+  TfToken id;
+  if (sh.GetIdAttr().Get(&id) && id == TfToken("UsdPreviewSurface")) {
+    return sh;
+  }
+  return std::nullopt;
 }
 
 static std::optional<UsdShadeShader> find_preview_surface(UsdShadeMaterial const &mat)
 {
   TfToken sourceName;
   UsdShadeAttributeType st = UsdShadeAttributeType::Invalid;
-  UsdShadeShader surface = mat.ComputeSurfaceSource(
-      UsdShadeTokens->universalRenderContext, &sourceName, &st);
-  if (!surface.GetPrim().IsValid()) {
-    return std::nullopt;
-  }
-  TfToken id;
-  if (surface.GetIdAttr().Get(&id) && id == TfToken("UsdPreviewSurface")) {
-    return surface;
+  UsdShadeShader const surface =
+      mat.ComputeSurfaceSource(UsdShadeTokens->universalRenderContext, &sourceName, &st);
+  if (auto p = as_preview_shader_if(surface)) {
+    return p;
   }
   for (UsdPrim const &child : mat.GetPrim().GetChildren()) {
-    UsdShadeShader sh(child);
-    if (!sh.GetPrim().IsValid()) {
-      continue;
-    }
-    if (sh.GetIdAttr().Get(&id) && id == TfToken("UsdPreviewSurface")) {
-      return sh;
+    if (auto p = as_preview_shader_if(UsdShadeShader(child))) {
+      return p;
     }
   }
   return std::nullopt;
@@ -511,38 +504,38 @@ static void finalize_mesh_from_scratch(
     }
   }
 
-  if (!mesh.positions.empty()) {
-    auto min_pos = mesh.positions[0];
-    auto max_pos = mesh.positions[0];
-    for (const auto &pos : mesh.positions) {
-      min_pos[0] = std::min(min_pos[0], pos[0]);
-      min_pos[1] = std::min(min_pos[1], pos[1]);
-      min_pos[2] = std::min(min_pos[2], pos[2]);
-      max_pos[0] = std::max(max_pos[0], pos[0]);
-      max_pos[1] = std::max(max_pos[1], pos[1]);
-      max_pos[2] = std::max(max_pos[2], pos[2]);
-    }
-    mesh.aabb.min = {min_pos[0], min_pos[1], min_pos[2]};
-    mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
+  if (mesh.positions.empty()) {
+    return;
   }
 
-  if (!mesh.positions.empty()) {
-    mr::Vec3f c(0, 0, 0);
-    for (auto const &p : mesh.positions) {
-      c += mr::Vec3f(p[0], p[1], p[2]);
-    }
-    const float inv_n = 1.f / static_cast<float>(mesh.positions.size());
-    c = mr::Vec3f(c.x() * inv_n, c.y() * inv_n, c.z() * inv_n);
-    float r2 = 0.f;
-    for (auto const &p : mesh.positions) {
-      float dx = p[0] - c.x();
-      float dy = p[1] - c.y();
-      float dz = p[2] - c.z();
-      r2 = std::max(r2, dx * dx + dy * dy + dz * dz);
-    }
-    mesh.bounding_sphere.center(c);
-    mesh.bounding_sphere.radius(std::sqrt(r2));
+  auto min_pos = mesh.positions[0];
+  auto max_pos = mesh.positions[0];
+  for (const auto &pos : mesh.positions) {
+    min_pos[0] = std::min(min_pos[0], pos[0]);
+    min_pos[1] = std::min(min_pos[1], pos[1]);
+    min_pos[2] = std::min(min_pos[2], pos[2]);
+    max_pos[0] = std::max(max_pos[0], pos[0]);
+    max_pos[1] = std::max(max_pos[1], pos[1]);
+    max_pos[2] = std::max(max_pos[2], pos[2]);
   }
+  mesh.aabb.min = {min_pos[0], min_pos[1], min_pos[2]};
+  mesh.aabb.max = {max_pos[0], max_pos[1], max_pos[2]};
+
+  mr::Vec3f c(0, 0, 0);
+  for (auto const &p : mesh.positions) {
+    c += mr::Vec3f(p[0], p[1], p[2]);
+  }
+  float const inv_n = 1.f / static_cast<float>(mesh.positions.size());
+  c = mr::Vec3f(c.x() * inv_n, c.y() * inv_n, c.z() * inv_n);
+  float r2 = 0.f;
+  for (auto const &p : mesh.positions) {
+    float const dx = p[0] - c.x();
+    float const dy = p[1] - c.y();
+    float const dz = p[2] - c.z();
+    r2 = std::max(r2, dx * dx + dy * dy + dz * dz);
+  }
+  mesh.bounding_sphere.center(c);
+  mesh.bounding_sphere.radius(std::sqrt(r2));
 }
 
 static std::filesystem::path resolve_usd_asset_path(std::filesystem::path const &path)
@@ -602,17 +595,11 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
     size_t idx = model.materials.size();
     material_index_by_path[key] = idx;
     MaterialData md{};
+    md.constants.base_color_factor = Color(0.8f, 0.8f, 0.8f, 1.f);
     if (is_enabled(options, Options::LoadMaterials)) {
-      auto preview = find_preview_surface(mat);
-      if (preview.has_value()) {
-        md = build_material_from_preview(preview.value(), stage_dir, options);
+      if (auto preview = find_preview_surface(mat)) {
+        md = build_material_from_preview(*preview, stage_dir, options);
       }
-      else {
-        md.constants.base_color_factor = Color(0.8f, 0.8f, 0.8f, 1.f);
-      }
-    }
-    else {
-      md.constants.base_color_factor = Color(0.8f, 0.8f, 0.8f, 1.f);
     }
     model.materials.push_back(std::move(md));
     return idx;
@@ -666,19 +653,13 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
     }
   }
 
-  {
-    bool any_non_guide = false;
-    for (auto const &it : items) {
-      if (!usd_geom_mesh_is_guide_purpose(it.mesh)) {
-        any_non_guide = true;
-        break;
-      }
-    }
-    if (any_non_guide) {
-      items.erase(std::remove_if(items.begin(), items.end(),
-                     [](MeshBuildItem const &it) { return usd_geom_mesh_is_guide_purpose(it.mesh); }),
-          items.end());
-    }
+  bool const any_non_guide = std::any_of(items.begin(), items.end(), [](MeshBuildItem const &it) {
+    return !usd_geom_mesh_is_guide_purpose(it.mesh);
+  });
+  if (any_non_guide) {
+    items.erase(std::remove_if(items.begin(), items.end(),
+                   [](MeshBuildItem const &it) { return usd_geom_mesh_is_guide_purpose(it.mesh); }),
+        items.end());
   }
 
   {
@@ -714,49 +695,36 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
   {
     ZoneScopedN("USD lights");
     for (UsdPrim const &prim : stage->Traverse(UsdTraverseInstanceProxies())) {
+      if (prim.IsA<UsdLuxDomeLight>()) {
+        // Environment domes do not map to punctual lights; skip.
+        continue;
+      }
       if (prim.IsA<UsdLuxDistantLight>()) {
-        UsdLuxDistantLight L(prim);
-        GfVec3f c(1, 1, 1);
-        L.GetColorAttr().Get(&c);
-        float intensity = 1.f;
-        L.GetIntensityAttr().Get(&intensity);
-        float exposure = 0.f;
-        L.GetExposureAttr().Get(&exposure);
-        intensity = lux_effective_intensity(intensity, exposure);
+        GfVec3f c;
+        float intensity;
+        read_usd_lux_color_and_effective_intensity(prim, c, intensity);
         model.lights.directionals.emplace_back(c[0], c[1], c[2], intensity);
       }
       else if (prim.IsA<UsdLuxSphereLight>()) {
-        UsdLuxSphereLight L(prim);
-        GfVec3f c(1, 1, 1);
-        L.GetColorAttr().Get(&c);
-        float intensity = 1.f;
-        L.GetIntensityAttr().Get(&intensity);
-        float exposure = 0.f;
-        L.GetExposureAttr().Get(&exposure);
-        intensity = lux_effective_intensity(intensity, exposure);
+        GfVec3f c;
+        float intensity;
+        read_usd_lux_color_and_effective_intensity(prim, c, intensity);
         UsdLuxShapingAPI shaping(prim);
         float cone = 180.f;
         if (shaping.GetShapingConeAngleAttr().Get(&cone) && cone > 0.f && cone < 179.f) {
-          float outer = GfDegreesToRadians(cone);
+          float const outer = GfDegreesToRadians(cone);
           model.lights.spots.emplace_back(c[0], c[1], c[2], intensity, outer * 0.9f, outer);
-          continue;
         }
-        model.lights.points.emplace_back(c[0], c[1], c[2], intensity);
+        else {
+          model.lights.points.emplace_back(c[0], c[1], c[2], intensity);
+        }
       }
       else if (prim.IsA<UsdLuxDiskLight>() || prim.IsA<UsdLuxRectLight>() ||
                prim.IsA<UsdLuxCylinderLight>()) {
-        UsdLuxLightAPI L(prim);
-        GfVec3f c(1, 1, 1);
-        L.GetColorAttr().Get(&c);
-        float intensity = 1.f;
-        L.GetIntensityAttr().Get(&intensity);
-        float exposure = 0.f;
-        L.GetExposureAttr().Get(&exposure);
-        intensity = lux_effective_intensity(intensity, exposure);
+        GfVec3f c;
+        float intensity;
+        read_usd_lux_color_and_effective_intensity(prim, c, intensity);
         model.lights.points.emplace_back(c[0], c[1], c[2], intensity);
-      }
-      else if (prim.IsA<UsdLuxDomeLight>()) {
-        // Environment domes do not map to punctual lights; skip.
       }
     }
   }
