@@ -31,9 +31,10 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("glm/1.0.1")
 
+        self.requires("openusd/26.03")
         self.requires("slang/2025.10.4")
 
-        self.requires("onetbb/2022.2.0")
+        self.requires("onetbb/2022.2.0", force=True)
 
         self.requires("mr-math/[>1.1.4]")
         self.requires("mr-utils/1.1.2")

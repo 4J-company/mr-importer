@@ -26,6 +26,7 @@ find_package(TBB REQUIRED)
 find_package(Ktx REQUIRED)
 find_package(Tracy REQUIRED)
 find_package(draco REQUIRED)
+find_package(pxr REQUIRED)
 CPMAddPackage("gh:spnda/dds_image#main")
 CPMAddPackage(
   NAME wuffs
@@ -45,6 +46,7 @@ set(MR_IMPORTER_PRIVATE_DEPS
   TBB::tbb
   KTX::ktx
   draco::draco
+  openusd::openusd
   dds_image
   wuffs
   Tracy::TracyClient
