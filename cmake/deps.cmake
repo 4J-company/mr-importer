@@ -16,6 +16,7 @@ set(MR_IMPORTER_PUBLIC_DEPS
   mr-math::mr-math
   mr-utils::mr-utils
   Vulkan::Headers
+  OpenSubdiv::osdgpu_static
 )
 
 # private dependencies
@@ -68,7 +69,6 @@ set(MR_IMPORTER_PRIVATE_DEPS
   KTX::ktx
   draco::draco
   openusd::openusd
-  OpenSubdiv::osdgpu_static
   dds_image
   wuffs
   Tracy::TracyClient
