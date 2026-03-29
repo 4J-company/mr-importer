@@ -73,8 +73,7 @@ class mr_importerRecipe(ConanFile):
     def generate(self):
         tc = CMakeToolchain(self)
         tc.generator = "Ninja"
-        # OpenUSD Ar/Sdf plugins (incl. Sdf_UsdzResolver for .usdz) must be registered.
-        # find_package(pxr) alone often does not define openusd_PACKAGE_FOLDER_*; set explicitly.
+
         openusd = self.dependencies.get("openusd")
         if openusd is not None:
             pkg = Path(openusd.package_folder)
@@ -85,6 +84,7 @@ class mr_importerRecipe(ConanFile):
                         candidate
                     ).replace("\\", "/")
                     break
+
         tc.generate()
 
         deps = CMakeDeps(self)
@@ -98,3 +98,6 @@ class mr_importerRecipe(ConanFile):
     def package(self):
         cmake = CMake(self)
         cmake.install()
+
+    def package_info(self):
+        self.cpp_info.libs = ["mr-importer-lib"]
