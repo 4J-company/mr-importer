@@ -12,6 +12,7 @@
 namespace mr {
 inline namespace importer {
 namespace {
+
 static std::pair<size_t, float> determine_lod_count_and_ratio(
     const PositionArray &positions, const IndexSpan &indices)
 {
@@ -235,6 +236,14 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   meshlet_array.meshlet_vertices.resize(meshlet_vertices_count);
   meshlet_array.meshlet_triangles.resize(meshlet_triangle_count);
 
+  for (size_t i = 0; i < meshlet_vertices_count; ++i) {
+    if (meshlet_array.meshlet_vertices[i] >= positions.size()) {
+      MR_ERROR("meshlet vertex index out of range: {} >= {} (positions)", meshlet_array.meshlet_vertices[i],
+          positions.size());
+      return {};
+    }
+  }
+
   {
     ZoneScopedN("meshopt_optimizeMeshlet");
 
@@ -414,10 +423,13 @@ Mesh optimize_data_layout(Mesh mesh)
         remap.data(), result.indices.data(), result.indices.size(), result.positions.size());
   }
 
-  result.lods[0].indices = IndexSpan(result.indices.data(), result.indices.size());
-  result.lods[0].shadow_indices = IndexSpan(
-      result.indices.data() + result.lods[0].indices.size(), result.lods[0].indices.size());
-  result.indices.resize(result.indices.size() + result.indices.size());
+  // Triangle indices occupy the first n entries; shadow indices follow. Resize first so
+  // [data()+n, data()+2n) is valid storage—assigning shadow_indices before resize wrote
+  // past size() (UB) and resize could invalidate spans if capacity was too small.
+  size_t const ntri_idx = result.indices.size();
+  result.indices.resize(ntri_idx * 2u);
+  result.lods[0].indices = IndexSpan(result.indices.data(), ntri_idx);
+  result.lods[0].shadow_indices = IndexSpan(result.indices.data() + ntri_idx, ntri_idx);
 
   if (!mesh.attributes.empty()) {
     ZoneScopedN("meshopt_generateShadowIndexBufferMulti");

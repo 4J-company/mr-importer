@@ -128,10 +128,13 @@ static void ensure_usd_plugins_registered()
 
 static Transform matr4f_from_gf_matrix(GfMatrix4d const &g)
 {
+  // GfMatrix4d uses row vectors (p_row * M); translation sits in the last row. glm and Polyscope use
+  // column vectors (M * p_col). The same rigid transform requires the transpose when copying entries
+  // into a glm::mat4 for column-major storage.
   glm::mat4 t{};
   for (int c = 0; c < 4; ++c) {
     for (int r = 0; r < 4; ++r) {
-      t[c][r] = static_cast<float>(g[r][c]);
+      t[c][r] = static_cast<float>(g[c][r]);
     }
   }
   return Transform(t[0][0],
@@ -426,6 +429,13 @@ static bool extract_usd_mesh_geometry(
     return false;
   }
 
+  size_t const nv = scratch.positions.size();
+  for (int vi : scratch.face_vertex_indices) {
+    if (vi < 0 || static_cast<size_t>(vi) >= nv) {
+      return false;
+    }
+  }
+
   scratch.normals_xyz.clear();
   scratch.uv_xy.clear();
 
@@ -639,7 +649,8 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
       UsdGeomMesh gm(prim);
       UsdGeomXformable xf(prim);
       GfMatrix4d world = xf.ComputeLocalToWorldTransform(UsdTimeCode::Default());
-      world = upCorr * world;
+      // Row-vector USD: p_w = p_l * W, then stage up-axis p' = p_w * U → combined p' = p_l * (W * U).
+      world = world * upCorr;
 
       MeshBuildItem item;
       item.mesh = gm;
@@ -761,7 +772,7 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
       cd.name = prim.GetName();
       UsdGeomXformable xf(prim);
       GfMatrix4d w = xf.ComputeLocalToWorldTransform(UsdTimeCode::Default());
-      w = upCorr * w;
+      w = w * upCorr;
       cd.world_from_camera = matr4f_from_gf_matrix(w);
       TfToken proj;
       if (cam.GetProjectionAttr().Get(&proj)) {
