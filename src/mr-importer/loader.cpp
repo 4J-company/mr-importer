@@ -3,7 +3,6 @@
  * \brief glTF loading and conversion into runtime asset structures.
  */
 
-#define WUFFS_IMPLEMENTATION
 #include "wuffs-v0.4.c"
 
 #include <dds.hpp>

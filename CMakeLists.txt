@@ -32,6 +32,7 @@ add_library(${MR_IMPORTER_LIB_NAME}
     src/mr-importer/optimizer.cpp
     src/mr-importer/compiler.cpp
     src/mr-importer/serializer.cpp
+    src/mr-importer/wuffs_impl.cpp
     src/mr-importer/flowgraph.hpp
     src/mr-importer/pch.hpp
 )
