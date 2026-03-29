@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from conan import ConanFile
 from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 from conan.tools.build import check_min_cppstd
@@ -71,6 +73,18 @@ class mr_importerRecipe(ConanFile):
     def generate(self):
         tc = CMakeToolchain(self)
         tc.generator = "Ninja"
+        # OpenUSD Ar/Sdf plugins (incl. Sdf_UsdzResolver for .usdz) must be registered.
+        # find_package(pxr) alone often does not define openusd_PACKAGE_FOLDER_*; set explicitly.
+        openusd = self.dependencies.get("openusd")
+        if openusd is not None:
+            pkg = Path(openusd.package_folder)
+            for sub in ("lib/usd", "lib64/usd"):
+                candidate = pkg / sub
+                if (candidate / "sdf" / "resources" / "plugInfo.json").is_file():
+                    tc.cache_variables["MR_IMPORTER_PXR_USD_PLUGIN_ROOT"] = str(
+                        candidate
+                    ).replace("\\", "/")
+                    break
         tc.generate()
 
         deps = CMakeDeps(self)

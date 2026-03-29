@@ -9,16 +9,23 @@
 #include "pch.hpp"
 
 #include <pxr/base/plug/registry.h>
+#include <pxr/base/gf/half.h>
 #include <pxr/base/gf/math.h>
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/rotation.h>
 #include <pxr/base/gf/vec3d.h>
 #include <pxr/base/tf/token.h>
+#include <pxr/base/tf/type.h>
+#include <pxr/usd/ar/resolver.h>
 #include <pxr/usd/sdf/assetPath.h>
 #include <pxr/usd/sdf/layer.h>
+#include <pxr/usd/sdf/path.h>
+#include <pxr/usd/usd/common.h>
+#include <pxr/usd/usd/primFlags.h>
 #include <pxr/usd/usd/primRange.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usdGeom/camera.h>
+#include <pxr/usd/usdGeom/imageable.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/metrics.h>
 #include <pxr/usd/usdGeom/primvar.h>
@@ -43,9 +50,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <mutex>
-#include <sstream>
 #include <unordered_map>
 #include <vector>
 #include <string_view>
@@ -56,13 +61,42 @@ namespace {
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+static void push_unique_path(std::vector<std::string> &paths, std::string const &p)
+{
+  if (p.empty()) {
+    return;
+  }
+  for (std::string const &x : paths) {
+    if (x == p) {
+      return;
+    }
+  }
+  paths.push_back(p);
+}
+
+static void append_usd_plugin_root(std::vector<std::string> &paths, std::filesystem::path const &root)
+{
+  if (root.empty()) {
+    return;
+  }
+  auto const sdf_plug = root / "sdf" / "resources" / "plugInfo.json";
+  if (std::filesystem::exists(sdf_plug)) {
+    push_unique_path(paths, sdf_plug.string());
+  }
+  push_unique_path(paths, root.string());
+}
+
 static void ensure_usd_plugins_registered()
 {
   static std::once_flag once;
   std::call_once(once, [] {
-    std::vector<std::string> plugin_roots;
+    std::vector<std::string> paths;
+    // Runtime override (no rebuild): same layout as PXR install lib/usd.
+    if (const char *env = std::getenv("MR_IMPORTER_USD_PLUGIN_ROOT")) {
+      append_usd_plugin_root(paths, std::filesystem::path(env));
+    }
 #ifdef MR_IMPORTER_PXR_USD_PLUGIN_ROOT
-    plugin_roots.emplace_back(MR_IMPORTER_PXR_USD_PLUGIN_ROOT);
+    append_usd_plugin_root(paths, std::filesystem::path(MR_IMPORTER_PXR_USD_PLUGIN_ROOT));
 #endif
     if (const char *env = std::getenv("PXR_PLUGINPATH")) {
 #if defined(_WIN32)
@@ -75,33 +109,20 @@ static void ensure_usd_plugins_registered()
         std::size_t const pos = sv.find(kListSep);
         std::string_view const part = (pos == std::string_view::npos) ? sv : sv.substr(0, pos);
         if (!part.empty()) {
-          plugin_roots.emplace_back(part.data(), part.size());
+          push_unique_path(paths, std::string(part.data(), part.size()));
         }
         sv = (pos == std::string_view::npos) ? std::string_view{} : sv.substr(pos + 1);
       }
     }
-    if (!plugin_roots.empty()) {
-      PlugRegistry::GetInstance().RegisterPlugins(plugin_roots);
+    if (!paths.empty()) {
+      PlugRegistry::GetInstance().RegisterPlugins(paths);
     }
-#ifdef MR_IMPORTER_PXR_USD_PLUGIN_ROOT
-    {
-      std::filesystem::path const usd_root(MR_IMPORTER_PXR_USD_PLUGIN_ROOT);
-      std::error_code ec;
-      std::vector<std::string> extra;
-      for (auto const &entry : std::filesystem::directory_iterator(usd_root, ec)) {
-        if (ec || !entry.is_directory()) {
-          continue;
-        }
-        auto plug = entry.path() / "resources" / "plugInfo.json";
-        if (std::filesystem::exists(plug)) {
-          extra.push_back(plug.string());
-        }
-      }
-      if (!extra.empty()) {
-        PlugRegistry::GetInstance().RegisterPlugins(extra);
-      }
+    else {
+      MR_WARNING(
+          "USD: no plugin search paths registered (Ar/Sdf resolvers e.g. Sdf_UsdzResolver may fail). "
+          "Set MR_IMPORTER_USD_PLUGIN_ROOT or PXR_PLUGINPATH to your OpenUSD lib/usd directory, or "
+          "configure CMake with MR_IMPORTER_PXR_USD_PLUGIN_ROOT.");
     }
-#endif
   });
 }
 
@@ -350,13 +371,28 @@ struct MeshBuildItem {
   bool geom_ok = false;
 };
 
+/** True when UsdGeomImageable purpose is <tt>guide</tt> (collision / editor helpers). */
+static bool usd_geom_mesh_is_guide_purpose(UsdGeomMesh const &gm)
+{
+  UsdGeomImageable const img(gm.GetPrim());
+  if (!img) {
+    return false;
+  }
+  TfToken purpose;
+  if (!img.GetPurposeAttr().Get(&purpose, UsdTimeCode::Default())) {
+    return false;
+  }
+  return purpose == UsdGeomTokens->guide;
+}
+
 static bool extract_usd_mesh_geometry(
     UsdGeomMesh const &geom, MeshGeometryScratch &scratch, Options options)
 {
   ZoneScopedN("USD extract mesh");
   const UsdTimeCode time = UsdTimeCode::Default();
   VtVec3fArray points;
-  if (!geom.GetPointsAttr().Get(&points, time) || points.empty()) {
+  bool const pts_ok = geom.GetPointsAttr().Get(&points, time);
+  if (!pts_ok || points.empty()) {
     return false;
   }
   VtIntArray faceVertexCounts;
@@ -375,6 +411,20 @@ static bool extract_usd_mesh_geometry(
       faceVertexCounts.cdata(), faceVertexCounts.cdata() + faceVertexCounts.size());
   scratch.face_vertex_indices.assign(
       faceVertexIndices.cdata(), faceVertexIndices.cdata() + faceVertexIndices.size());
+
+  if (scratch.face_vertex_counts.empty()) {
+    return false;
+  }
+  long long corner_sum = 0;
+  for (int c : scratch.face_vertex_counts) {
+    if (c < 0) {
+      return false;
+    }
+    corner_sum += c;
+  }
+  if (corner_sum != static_cast<long long>(scratch.face_vertex_indices.size())) {
+    return false;
+  }
 
   scratch.normals_xyz.clear();
   scratch.uv_xy.clear();
@@ -426,6 +476,7 @@ static void finalize_mesh_from_scratch(
   }
 
   mesh.lods.clear();
+  // IndexArray owns triangle indices; LOD[0] only references the same storage.
   mesh.lods.emplace_back(IndexSpan(mesh.indices.data(), mesh.indices.size()), IndexSpan());
 
   if (load_attributes && is_enabled(options, Options::LoadMeshAttributes)) {
@@ -484,48 +535,49 @@ static void finalize_mesh_from_scratch(
   }
 }
 
+static std::filesystem::path resolve_usd_asset_path(std::filesystem::path const &path)
+{
+  std::error_code ec;
+  std::filesystem::path const canonical = std::filesystem::weakly_canonical(path, ec);
+  if (!ec) {
+    return canonical;
+  }
+  ec.clear();
+  std::filesystem::path const abs = std::filesystem::absolute(path, ec);
+  if (!ec) {
+    return abs;
+  }
+  return path;
+}
+
 static UsdStageRefPtr open_usd_stage_from_path(std::filesystem::path const &path)
 {
   ZoneScopedN("open_usd_stage_from_path");
   ensure_usd_plugins_registered();
-
-  std::string ext = path.extension().string();
-  std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-
-  // In-memory .usda avoids Ar resolving the layer file path on disk.
-  if (ext == ".usda") {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-      MR_ERROR("Failed to read USD ASCII file: {}", path.string());
-      return {};
-    }
-    std::ostringstream buffer;
-    buffer << file.rdbuf();
-    SdfLayerRefPtr layer = SdfLayer::CreateAnonymous(path.filename().string());
-    if (!layer->ImportFromString(buffer.str())) {
-      MR_ERROR("Failed to parse USD ASCII layer: {}", path.string());
-      return {};
-    }
-    return UsdStage::Open(layer);
-  }
-
-  return UsdStage::Open(path.string());
+  // File-backed root + explicit resolver context so relative references,
+  // sublayers, and nested payloads resolve against the asset directory.
+  std::string const p = path.string();
+  ArResolverContext const ctx = ArGetResolver().CreateDefaultContextForAsset(p);
+  return UsdStage::Open(p, ctx);
 }
 
 static bool load_usd_into_model(Model &model, std::filesystem::path const &path, Options options)
 {
   ZoneScopedN("load_usd_into_model");
 
-  UsdStageRefPtr stage = open_usd_stage_from_path(path);
+  std::filesystem::path const asset_path = resolve_usd_asset_path(path);
+  UsdStageRefPtr stage = open_usd_stage_from_path(asset_path);
   if (!stage) {
-    MR_ERROR("Failed to open USD stage: {}", path.string());
+    MR_ERROR("Failed to open USD stage: {}", asset_path.string());
     return false;
   }
 
+  // Nested payloads (e.g. prefab → .gdt.usd → variant → .geo.usd) must be in the
+  // load set or composition stops at empty payload gates (0 meshes).
+  stage->Load(SdfPath::AbsoluteRootPath(), UsdLoadWithDescendants);
+
   GfMatrix4d upCorr = stage_up_axis_correction(stage);
-  std::filesystem::path stage_dir = path.parent_path();
+  std::filesystem::path stage_dir = asset_path.parent_path();
 
   std::unordered_map<std::string, size_t> material_index_by_path;
   std::mutex material_mutex;
@@ -564,7 +616,7 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
 
   {
     ZoneScopedN("USD traverse materials");
-    for (UsdPrim const &prim : stage->Traverse()) {
+    for (UsdPrim const &prim : stage->Traverse(UsdTraverseInstanceProxies())) {
       if (prim.GetTypeName() != TfToken("Material")) {
         continue;
       }
@@ -578,11 +630,9 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
   std::vector<MeshBuildItem> items;
   {
     ZoneScopedN("USD collect meshes");
-    UsdPrim root = stage->GetDefaultPrim();
-    if (!root) {
-      root = stage->GetPseudoRoot();
-    }
-    for (UsdPrim const &prim : UsdPrimRange(root)) {
+    // Traverse the full composed stage (same as lights/cameras). Using only
+    // UsdPrimRange(defaultPrim) omits meshes outside the default prim subtree.
+    for (UsdPrim const &prim : stage->Traverse(UsdTraverseInstanceProxies())) {
       if (!prim.IsA<UsdGeomMesh>()) {
         continue;
       }
@@ -606,6 +656,21 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
   }
 
   {
+    bool any_non_guide = false;
+    for (auto const &it : items) {
+      if (!usd_geom_mesh_is_guide_purpose(it.mesh)) {
+        any_non_guide = true;
+        break;
+      }
+    }
+    if (any_non_guide) {
+      items.erase(std::remove_if(items.begin(), items.end(),
+                     [](MeshBuildItem const &it) { return usd_geom_mesh_is_guide_purpose(it.mesh); }),
+          items.end());
+    }
+  }
+
+  {
     ZoneScopedN("USD extract mesh geometry");
     for (size_t i = 0; i < items.size(); ++i) {
       items[i].geom_ok = extract_usd_mesh_geometry(items[i].mesh, items[i].scratch, options);
@@ -622,7 +687,8 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
         mesh = Mesh{};
         return;
       }
-      finalize_mesh_from_scratch(item.scratch, mesh, true, options);
+      finalize_mesh_from_scratch(
+          item.scratch, mesh, is_enabled(options, Options::LoadMeshAttributes), options);
       mesh.name = item.name;
       mesh.transforms = {matr4f_from_gf_matrix(item.world)};
       mesh.material = item.material_index;
@@ -636,7 +702,7 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
 
   {
     ZoneScopedN("USD lights");
-    for (UsdPrim const &prim : stage->Traverse()) {
+    for (UsdPrim const &prim : stage->Traverse(UsdTraverseInstanceProxies())) {
       if (prim.IsA<UsdLuxDistantLight>()) {
         UsdLuxDistantLight L(prim);
         GfVec3f c(1, 1, 1);
@@ -686,7 +752,7 @@ static bool load_usd_into_model(Model &model, std::filesystem::path const &path,
 
   {
     ZoneScopedN("USD cameras");
-    for (UsdPrim const &prim : stage->Traverse()) {
+    for (UsdPrim const &prim : stage->Traverse(UsdTraverseInstanceProxies())) {
       if (!prim.IsA<UsdGeomCamera>()) {
         continue;
       }
@@ -756,3 +822,15 @@ void add_usd_loader_nodes(FlowGraph &graph, const Options &options)
 
 } // namespace importer
 } // namespace mr
+
+// Register scalar half with TfType when missing. Otherwise VtValue::GetType() warns
+// ("unregistered C++ type pxr_half::half") for half-valued attributes on real assets.
+PXR_NAMESPACE_OPEN_SCOPE
+TF_REGISTRY_FUNCTION(TfType)
+{
+  TfType const t = TfType::Find<GfHalf>();
+  if (t.IsUnknown()) {
+    TfType::Define<GfHalf>();
+  }
+}
+PXR_NAMESPACE_CLOSE_SCOPE

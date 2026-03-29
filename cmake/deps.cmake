@@ -29,12 +29,24 @@ find_package(draco REQUIRED)
 find_package(pxr REQUIRED)
 find_package(OpenSubdiv REQUIRED)
 
-# OpenUSD discovers file formats (Sdf, Ar, …) via PlugRegistry. Static Conan
-# packages need an explicit plugin root (…/lib/usd); see usd_loader.cpp.
-if(DEFINED openusd_PACKAGE_FOLDER_RELEASE)
-  set(MR_IMPORTER_PXR_USD_PLUGIN_ROOT "${openusd_PACKAGE_FOLDER_RELEASE}/lib/usd")
-elseif(DEFINED openusd_PACKAGE_FOLDER_DEBUG)
-  set(MR_IMPORTER_PXR_USD_PLUGIN_ROOT "${openusd_PACKAGE_FOLDER_DEBUG}/lib/usd")
+# OpenUSD discovers file formats (Sdf, Ar, …) via PlugRegistry. Conan layouts
+# vary; CMakeDeps may expose openusd_* or pxr_* package folders. conanfile.py
+# also sets MR_IMPORTER_PXR_USD_PLUGIN_ROOT via CMakeToolchain when possible.
+if(NOT MR_IMPORTER_PXR_USD_PLUGIN_ROOT)
+  foreach(
+    _root
+    "${openusd_PACKAGE_FOLDER_RELEASE}"
+    "${openusd_PACKAGE_FOLDER_DEBUG}"
+    "${pxr_PACKAGE_FOLDER_RELEASE}"
+    "${pxr_PACKAGE_FOLDER_DEBUG}")
+    if(_root STREQUAL "")
+      continue()
+    endif()
+    if(EXISTS "${_root}/lib/usd/sdf/resources/plugInfo.json")
+      set(MR_IMPORTER_PXR_USD_PLUGIN_ROOT "${_root}/lib/usd")
+      break()
+    endif()
+  endforeach()
 endif()
 CPMAddPackage("gh:spnda/dds_image#main")
 CPMAddPackage(

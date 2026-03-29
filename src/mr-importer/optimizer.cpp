@@ -21,6 +21,9 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   constexpr int mintriangles = 12;
 
   size_t triangle_count = indices.size() / 3;
+  if (triangle_count == 0) {
+    return {0, 0};
+  }
   float lod_scale = std::pow((float)mintriangles / triangle_count, 1.f / maxlods);
   size_t lod_count = std::ceil(std::log((float)mintriangles / triangle_count) / std::log(lod_scale));
 
@@ -180,6 +183,10 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   constexpr size_t min_triangles = 96;
   constexpr size_t max_triangles = 124; // up to 126, but divisible by 4
 
+  if (indices.size() < 3) {
+    return {};
+  }
+
   size_t max_meshlets = meshopt_buildMeshletsBound(indices.size(), max_vertices, min_triangles);
 
   // clang-format off
@@ -309,6 +316,14 @@ void generate_lod_set(Mesh &result, std::span<meshopt_Stream> streams, int lodco
 Mesh optimize_data_layout(Mesh mesh)
 {
   ZoneScoped;
+
+  if (mesh.indices.empty()) {
+    return mesh;
+  }
+  if (mesh.lods.empty() || mesh.lods[0].indices.size() != mesh.indices.size()) {
+    mesh.lods.clear();
+    mesh.lods.emplace_back(IndexSpan(mesh.indices.data(), mesh.indices.size()), IndexSpan());
+  }
 
   Mesh result;
   result.transforms = std::move(mesh.transforms);
@@ -469,7 +484,8 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
         }
 
         // clang-format off
-        if (options & Options::GenerateDiscreteLODs) {
+        if (options & Options::GenerateDiscreteLODs && !mesh.lods.empty()
+            && mesh.lods[0].indices.size() >= 3) {
           std::array streams = {
               meshopt_Stream {mesh.positions.data(),  sizeof(Position),         sizeof(Position)        },
               meshopt_Stream {mesh.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
@@ -480,6 +496,9 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
 
         if (options & Options::GenerateMeshlets) {
           tbb::parallel_for<size_t>(0, mesh.lods.size(), [&mesh](size_t i) {
+            if (mesh.lods[i].indices.size() < 3) {
+              return;
+            }
             std::tie(mesh.lods[i].meshlet_array, mesh.lods[i].meshlet_bounds) =
                 generate_meshlets(mesh.positions, mesh.lods[i].indices);
           });
