@@ -36,6 +36,9 @@ inline namespace importer {
     /** \brief Load attributes */
     LoadMeshAttributes = 1 << 9,
 
+    /** \brief Generate attributes */
+    GenerateMeshAttributes = 1 << 10,
+
     All = ~None,
   };
 

@@ -22,7 +22,7 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   constexpr int mintriangles = 12;
 
   size_t triangle_count = indices.size() / 3;
-  if (triangle_count == 0) {
+  if (triangle_count == 0 || triangle_count >= mintriangles) {
     return {0, 0};
   }
   float lod_scale = std::pow((float)mintriangles / triangle_count, 1.f / maxlods);
@@ -66,6 +66,10 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   const bool use_attributes = !is_sparse && !attributes.empty();
 
   float lod_error = 0.f;
+
+  if (target_index_count >= original_index_count) {
+    return {};
+  }
 
   result_indices.resize(original_index_count);
 
@@ -460,6 +464,58 @@ Mesh optimize_data_layout(Mesh mesh)
   return result;
 }
 
+Mesh generate_mesh_attributes(Mesh mesh)
+{
+  ZoneScoped;
+
+  if (mesh.indices.empty() || mesh.positions.empty() || !mesh.attributes.empty()) {
+    return mesh;
+  }
+  if (mesh.lods.empty() || mesh.lods[0].indices.size() != mesh.indices.size()) {
+    mesh.lods.clear();
+    mesh.lods.emplace_back(IndexSpan(mesh.indices.data(), mesh.indices.size()), IndexSpan());
+  }
+
+  int fcnt = 0;
+  int scnt = 0;
+
+  std::vector<mr::Vec3f> normals;
+  normals.resize(mesh.positions.size());
+  for (size_t i = 0; i < mesh.lods[0].indices.size(); i += 3) {
+    auto idx0 = mesh.lods[0].indices[i+0];
+    auto idx1 = mesh.lods[0].indices[i+1];
+    auto idx2 = mesh.lods[0].indices[i+2];
+
+    mr::Vec3f p0 = { mesh.positions[idx0][0], mesh.positions[idx0][1], mesh.positions[idx0][2] };
+    mr::Vec3f p1 = { mesh.positions[idx1][0], mesh.positions[idx1][1], mesh.positions[idx1][2] };
+    mr::Vec3f p2 = { mesh.positions[idx2][0], mesh.positions[idx2][1], mesh.positions[idx2][2] };
+
+    mr::Vec3f e0 = p1 - p0;
+    mr::Vec3f e1 = p2 - p0;
+
+    if (auto norm = e0.cross(e1).normalized()) {
+      normals[idx0] += norm.value();
+      normals[idx1] += norm.value();
+      normals[idx2] += norm.value();
+    }
+    else {
+      fcnt++;
+    }
+  }
+
+  mesh.attributes.resize(normals.size());
+  for (size_t i = 0; i < mesh.attributes.size(); i++) {
+    if (auto norm = normals[i].normalized()) {
+      mesh.attributes[i].normal = { norm->x(), norm->y(), norm->z() };
+    }
+    else {
+      scnt++;
+    }
+  }
+
+  return mesh;
+}
+
 } // namespace
 
 /*
@@ -493,6 +549,10 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
 
         if (options & Options::OptimizeMeshes) {
           mesh = optimize_data_layout(std::move(mesh));
+        }
+
+        if (options & Options::GenerateMeshAttributes) {
+          mesh = generate_mesh_attributes(std::move(mesh));
         }
 
         // clang-format off
