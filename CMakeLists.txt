@@ -40,6 +40,19 @@ add_library(${MR_IMPORTER_LIB_NAME}
 target_compile_features(${MR_IMPORTER_LIB_NAME} PUBLIC cxx_std_23)
 target_link_libraries(${MR_IMPORTER_LIB_NAME} PUBLIC ${MR_IMPORTER_PUBLIC_DEPS})
 target_link_libraries(${MR_IMPORTER_LIB_NAME} PRIVATE ${MR_IMPORTER_PRIVATE_DEPS})
+# Static libusd_hdSt needs libosdGPU.a after USD archives on the link line. LINK_GROUP on this
+# target's PUBLIC interface expands to an empty --start-group for dependents; late whole-archive
+# (or -force_load on Apple) via INTERFACE link options propagates to all consumers.
+if(MR_IMPORTER_CONAN_LIBOSDGPU_ABS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  if(APPLE)
+    set(_mr_importer_late_osd "SHELL:-Wl,-force_load,${MR_IMPORTER_CONAN_LIBOSDGPU_ABS}")
+  else()
+    set(_mr_importer_late_osd
+      "SHELL:-Wl,--whole-archive ${MR_IMPORTER_CONAN_LIBOSDGPU_ABS} -Wl,--no-whole-archive")
+  endif()
+  target_link_options(${MR_IMPORTER_LIB_NAME} INTERFACE "$<BUILD_INTERFACE:${_mr_importer_late_osd}>")
+  unset(_mr_importer_late_osd)
+endif()
 if(MR_IMPORTER_PXR_USD_PLUGIN_ROOT)
   target_compile_definitions(${MR_IMPORTER_LIB_NAME} PRIVATE
     "MR_IMPORTER_PXR_USD_PLUGIN_ROOT=\"${MR_IMPORTER_PXR_USD_PLUGIN_ROOT}\"")
