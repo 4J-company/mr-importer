@@ -12,6 +12,7 @@
 namespace mr {
 inline namespace importer {
 namespace {
+
 static std::pair<size_t, float> determine_lod_count_and_ratio(
     const PositionArray &positions, const IndexSpan &indices)
 {
@@ -21,6 +22,9 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   constexpr int mintriangles = 12;
 
   size_t triangle_count = indices.size() / 3;
+  if (triangle_count == 0) {
+    return {0, 0};
+  }
   float lod_scale = std::pow((float)mintriangles / triangle_count, 1.f / maxlods);
   size_t lod_count = std::ceil(std::log((float)mintriangles / triangle_count) / std::log(lod_scale));
 
@@ -180,6 +184,10 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
   constexpr size_t min_triangles = 96;
   constexpr size_t max_triangles = 124; // up to 126, but divisible by 4
 
+  if (indices.size() < 3) {
+    return {};
+  }
+
   size_t max_meshlets = meshopt_buildMeshletsBound(indices.size(), max_vertices, min_triangles);
 
   // clang-format off
@@ -227,6 +235,14 @@ static std::pair<size_t, float> determine_lod_count_and_ratio(
 
   meshlet_array.meshlet_vertices.resize(meshlet_vertices_count);
   meshlet_array.meshlet_triangles.resize(meshlet_triangle_count);
+
+  for (size_t i = 0; i < meshlet_vertices_count; ++i) {
+    if (meshlet_array.meshlet_vertices[i] >= positions.size()) {
+      MR_ERROR("meshlet vertex index out of range: {} >= {} (positions)", meshlet_array.meshlet_vertices[i],
+          positions.size());
+      return {};
+    }
+  }
 
   {
     ZoneScopedN("meshopt_optimizeMeshlet");
@@ -309,6 +325,14 @@ void generate_lod_set(Mesh &result, std::span<meshopt_Stream> streams, int lodco
 Mesh optimize_data_layout(Mesh mesh)
 {
   ZoneScoped;
+
+  if (mesh.indices.empty()) {
+    return mesh;
+  }
+  if (mesh.lods.empty() || mesh.lods[0].indices.size() != mesh.indices.size()) {
+    mesh.lods.clear();
+    mesh.lods.emplace_back(IndexSpan(mesh.indices.data(), mesh.indices.size()), IndexSpan());
+  }
 
   Mesh result;
   result.transforms = std::move(mesh.transforms);
@@ -399,10 +423,13 @@ Mesh optimize_data_layout(Mesh mesh)
         remap.data(), result.indices.data(), result.indices.size(), result.positions.size());
   }
 
-  result.lods[0].indices = IndexSpan(result.indices.data(), result.indices.size());
-  result.lods[0].shadow_indices = IndexSpan(
-      result.indices.data() + result.lods[0].indices.size(), result.lods[0].indices.size());
-  result.indices.resize(result.indices.size() + result.indices.size());
+  // Triangle indices occupy the first n entries; shadow indices follow. Resize first so
+  // [data()+n, data()+2n) is valid storage—assigning shadow_indices before resize wrote
+  // past size() (UB) and resize could invalidate spans if capacity was too small.
+  size_t const ntri_idx = result.indices.size();
+  result.indices.resize(ntri_idx * 2u);
+  result.lods[0].indices = IndexSpan(result.indices.data(), ntri_idx);
+  result.lods[0].shadow_indices = IndexSpan(result.indices.data() + ntri_idx, ntri_idx);
 
   if (!mesh.attributes.empty()) {
     ZoneScopedN("meshopt_generateShadowIndexBufferMulti");
@@ -444,9 +471,9 @@ Mesh optimize_data_layout(Mesh mesh)
 void add_optimizer_nodes(FlowGraph &graph, const Options &options)
 {
   graph.split_meshes =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, std::vector<size_t>>>(
-          graph.graph, 1, [&graph](fastgltf::Asset *asset) -> std::vector<size_t> {
-            if (asset == nullptr || !graph.model)
+      std::make_unique<tbb::flow::function_node<void *, std::vector<size_t>>>(
+          graph.graph, 1, [&graph](void *token) -> std::vector<size_t> {
+            if (token == nullptr || !graph.model)
               return {};
 
             std::vector<size_t> indices(graph.model->meshes.size());
@@ -469,7 +496,8 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
         }
 
         // clang-format off
-        if (options & Options::GenerateDiscreteLODs) {
+        if (options & Options::GenerateDiscreteLODs && !mesh.lods.empty()
+            && mesh.lods[0].indices.size() >= 3) {
           std::array streams = {
               meshopt_Stream {mesh.positions.data(),  sizeof(Position),         sizeof(Position)        },
               meshopt_Stream {mesh.attributes.data(), sizeof(VertexAttributes), sizeof(VertexAttributes)},
@@ -480,6 +508,9 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
 
         if (options & Options::GenerateMeshlets) {
           tbb::parallel_for<size_t>(0, mesh.lods.size(), [&mesh](size_t i) {
+            if (mesh.lods[i].indices.size() < 3) {
+              return;
+            }
             std::tie(mesh.lods[i].meshlet_array, mesh.lods[i].meshlet_bounds) =
                 generate_meshlets(mesh.positions, mesh.lods[i].indices);
           });
@@ -489,16 +520,16 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
         return mesh_idx;
       });
 
-  // This collects all mesh indices and passes asset pointer forward
+  // This collects all mesh indices and passes the pipeline token forward
   graph.meshes_join = std::make_unique<
-      tbb::flow::join_node<std::tuple<size_t, fastgltf::Asset *>, tbb::flow::queueing>>(
+      tbb::flow::join_node<std::tuple<size_t, void *>, tbb::flow::queueing>>(
       graph.graph);
 
   graph.continue_after_meshes = std::make_unique<
-      tbb::flow::function_node<std::tuple<size_t, fastgltf::Asset *>, fastgltf::Asset *>>(
+      tbb::flow::function_node<std::tuple<size_t, void *>, void *>>(
       graph.graph,
       1,
-      [&graph](const std::tuple<size_t, fastgltf::Asset *> &input) -> fastgltf::Asset * {
+      [&graph](const std::tuple<size_t, void *> &input) -> void * {
         return std::get<1>(input);
       });
 
@@ -513,13 +544,13 @@ void add_optimizer_nodes(FlowGraph &graph, const Options &options)
           });
 
   graph.asset_replicator =
-      std::make_unique<tbb::flow::function_node<fastgltf::Asset *, fastgltf::Asset *>>(
-          graph.graph, tbb::flow::unlimited, [&graph](fastgltf::Asset *asset) -> fastgltf::Asset * {
+      std::make_unique<tbb::flow::function_node<void *, void *>>(
+          graph.graph, tbb::flow::unlimited, [&graph](void *token) -> void * {
             if (graph.model) {
               for (size_t i = 0; i < graph.model->meshes.size(); ++i) {
               }
             }
-            return asset;
+            return token;
           });
 
   // clang-format off

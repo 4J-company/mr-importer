@@ -528,6 +528,20 @@ void serialize(Archive &ar,
   ar & lights.spots;
 }
 
+template <class Archive>
+void serialize(
+    Archive &ar, mr::importer::CameraData &cam, const unsigned int version)
+{
+  ar & cam.name;
+  ar & cam.world_from_camera;
+  ar & cam.perspective;
+  ar & cam.focal_length_mm;
+  ar & cam.horizontal_aperture_mm;
+  ar & cam.vertical_aperture_mm;
+  ar & cam.clipping_range_near;
+  ar & cam.clipping_range_far;
+}
+
 // Model
 template <class Archive>
 void serialize(
@@ -536,6 +550,7 @@ void serialize(
   ar & model.meshes;
   ar & model.materials;
   ar & model.lights;
+  ar & model.cameras;
 }
 
 } // namespace serialization

@@ -348,6 +348,19 @@ inline namespace importer {
     using LightBase::operator=;
   };
 
+  /** \brief Camera parameters imported from USD (UsdGeomCamera). */
+  struct CameraData {
+    std::string name;
+    /** World transform of the camera prim (USD camera looks along -Z in local space). */
+    Transform world_from_camera;
+    bool perspective = true;
+    float focal_length_mm = 35.f;
+    float horizontal_aperture_mm = 20.955f;
+    float vertical_aperture_mm = 15.2908f;
+    float clipping_range_near = 0.01f;
+    float clipping_range_far = 1e6f;
+  };
+
   /**
    * \brief Aggregate renderable asset produced by the importer.
    *
@@ -361,6 +374,7 @@ inline namespace importer {
       std::vector<PointLight> points;
       std::vector<SpotLight> spots;
     } lights;
+    std::vector<CameraData> cameras;
 
     Model() = default;
     /** \brief Construct and import an asset from the given file path. */

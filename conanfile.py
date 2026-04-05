@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from conan import ConanFile
 from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 from conan.tools.build import check_min_cppstd
@@ -18,7 +20,14 @@ class mr_importerRecipe(ConanFile):
     options = {"shared": [True, False]}
     default_options = {"shared": False}
 
-    exports_sources = "CMakeLists.txt", "src/*", "include/*", "cmake/deps.cmake", "tests/main.cpp", "examples/*"
+    exports_sources = (
+        "CMakeLists.txt",
+        "src/*",
+        "include/*",
+        "cmake/deps.cmake",
+        "tests/*",
+        "examples/*",
+    )
 
     def requirements(self):
         self.requires("spdlog/1.14.1", override=True)
@@ -31,9 +40,12 @@ class mr_importerRecipe(ConanFile):
 
         self.requires("glm/1.0.1")
 
+        self.requires("openusd/26.03")
+        # Propagated for consumers: libusd_hdSt references osdGPU (GLSL patch sources).
+        self.requires("opensubdiv/3.6.0")
         self.requires("slang/2025.10.4")
 
-        self.requires("onetbb/2022.2.0")
+        self.requires("onetbb/2022.2.0", force=True)
 
         self.requires("mr-math/[>1.1.4]")
         self.requires("mr-utils/1.1.2")
@@ -63,6 +75,18 @@ class mr_importerRecipe(ConanFile):
     def generate(self):
         tc = CMakeToolchain(self)
         tc.generator = "Ninja"
+
+        openusd = self.dependencies.get("openusd")
+        if openusd is not None:
+            pkg = Path(openusd.package_folder)
+            for sub in ("lib/usd", "lib64/usd"):
+                candidate = pkg / sub
+                if (candidate / "sdf" / "resources" / "plugInfo.json").is_file():
+                    tc.cache_variables["MR_IMPORTER_PXR_USD_PLUGIN_ROOT"] = str(
+                        candidate
+                    ).replace("\\", "/")
+                    break
+
         tc.generate()
 
         deps = CMakeDeps(self)
@@ -76,3 +100,6 @@ class mr_importerRecipe(ConanFile):
     def package(self):
         cmake = CMake(self)
         cmake.install()
+
+    def package_info(self):
+        self.cpp_info.libs = ["mr-importer-lib"]
